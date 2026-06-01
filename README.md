@@ -82,7 +82,7 @@ npm run build
 
 ## GitHub Pages公開
 
-`.github/workflows/pages.yml` は main ブランチへの push で実行されます。
+`.github/workflows/pages.yml` は main または master ブランチへの push で実行されます。
 
 処理内容:
 
