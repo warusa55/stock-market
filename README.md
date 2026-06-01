@@ -2,7 +2,7 @@
 
 文脈体験プラットフォームのbaseブランチ実装です。
 
-このブランチでは Phase 1 / 2 / 5 を扱います。
+baseブランチでは Phase 1 / 2 / 5 を扱います。
 
 - Phase 1: core model / plugin contract
 - Phase 2: base plugin class / registry / static UI prototype
@@ -11,6 +11,12 @@
 - Matching: dictionary hit detection and related event map selection
 
 Phase 3 の stock / fund plugin と Phase 4 の onboarding plugin は、別ブランチで `DomainPluginBase` から派生して作る想定です。
+
+marketブランチでは Phase 3 として stock / fund plugin を追加します。
+
+- `src/plugins/stock/`: 個別株カード、株式用語図鑑、株式イベントマップ
+- `src/plugins/fund/`: 投信カード、投信用語図鑑、投信イベントマップ
+- `src/plugins/market/`: stock / fund pluginの登録入口
 
 ## Commands
 
@@ -34,6 +40,16 @@ market:
 
 company:
   onboarding pluginを表示
+```
+
+## Market Plugin
+
+```js
+import { createMarketRegistry } from "./src/plugins/market/index.js";
+
+const registry = createMarketRegistry();
+const stock = registry.require("stock");
+const fund = registry.require("fund");
 ```
 
 ## UI Prototype
