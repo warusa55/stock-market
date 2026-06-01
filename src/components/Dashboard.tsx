@@ -21,7 +21,14 @@ type DashboardItem = MatchedFeed & {
   checkState?: FeedCheckState;
 };
 
-const sourceOptions: Array<FeedSource | "all"> = ["all", "tdnet", "edinet", "news", "sample"];
+const sourceOptions: Array<FeedSource | "all"> = [
+  "all",
+  "tdnet",
+  "edinet",
+  "news",
+  "sample",
+  "manual"
+];
 
 const buildRiskInput = (feed: FeedItem) =>
   [feed.title, feed.companyName, feed.documentType].filter(Boolean).join(" ");

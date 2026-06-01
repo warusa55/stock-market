@@ -617,6 +617,42 @@ mark {
   font-family: Consolas, "Courier New", monospace;
 }
 
+.manual-feed-form {
+  display: grid;
+  gap: 12px;
+}
+
+.manual-feed-list {
+  display: grid;
+  gap: 10px;
+}
+
+.manual-feed-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.manual-feed-card h4,
+.manual-feed-card p {
+  margin: 0;
+}
+
+.manual-feed-card p {
+  margin-top: 4px;
+  color: #526173;
+}
+
+.manual-feed-card a {
+  display: inline-block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
 .danger-zone {
   border-color: #fecaca;
 }
@@ -684,6 +720,10 @@ mark {
   }
 
   .feed-card-top {
+    grid-template-columns: 1fr;
+  }
+
+  .manual-feed-card {
     grid-template-columns: 1fr;
   }
 

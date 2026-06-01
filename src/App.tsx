@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dashboard } from "./components/Dashboard";
 import { DictionaryPage } from "./components/DictionaryPage";
 import { Layout, type TabKey } from "./components/Layout";
@@ -9,8 +9,10 @@ import {
   clearAllLocalData,
   importLocalData,
   loadChecks,
+  loadLocalFeeds,
   loadStocks,
   saveChecks,
+  saveLocalFeeds,
   saveStocks
 } from "./storage/localStorageStore";
 import type { FeedCheckState, FeedItem, Stock, WatchLevel } from "./types";
@@ -56,18 +58,60 @@ const sampleStockSeeds: Array<{
 const createId = () =>
   globalThis.crypto?.randomUUID?.() ?? `stock-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+const feedKeys = (feed: FeedItem) => [
+  `id:${feed.id}`,
+  feed.url ? `url:${feed.url}` : "",
+  `title:${feed.title}:${feed.companyName ?? ""}:${feed.code ?? ""}`
+];
+
+const mergeFeedsWithLocalPriority = (publicFeeds: FeedItem[], localFeeds: FeedItem[]) => {
+  const merged: FeedItem[] = [];
+  const indexByKey = new Map<string, number>();
+
+  const insert = (feed: FeedItem, replaceExisting: boolean) => {
+    const keys = feedKeys(feed).filter(Boolean);
+    const existingIndex = keys
+      .map((key) => indexByKey.get(key))
+      .find((index): index is number => index !== undefined);
+
+    if (existingIndex !== undefined && replaceExisting) {
+      merged[existingIndex] = feed;
+      keys.forEach((key) => indexByKey.set(key, existingIndex));
+      return;
+    }
+
+    if (existingIndex !== undefined) {
+      return;
+    }
+
+    const nextIndex = merged.length;
+    merged.push(feed);
+    keys.forEach((key) => indexByKey.set(key, nextIndex));
+  };
+
+  publicFeeds.forEach((feed) => insert(feed, false));
+  localFeeds.forEach((feed) => insert(feed, true));
+
+  return merged;
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [stocks, setStocks] = useState<Stock[]>(() => loadStocks());
   const [checks, setChecks] = useState<FeedCheckState[]>(() => loadChecks());
-  const [feeds, setFeeds] = useState<FeedItem[]>([]);
+  const [publicFeeds, setPublicFeeds] = useState<FeedItem[]>([]);
+  const [localFeeds, setLocalFeeds] = useState<FeedItem[]>(() => loadLocalFeeds());
   const [feedsLoadedAt, setFeedsLoadedAt] = useState<string>();
   const [feedError, setFeedError] = useState<string>();
+  const feeds = useMemo(
+    () => mergeFeedsWithLocalPriority(publicFeeds, localFeeds),
+    [localFeeds, publicFeeds]
+  );
 
   const reloadFeeds = useCallback(async () => {
     try {
       const result = await loadFeeds();
-      setFeeds(result.feeds);
+      setPublicFeeds(result.feeds);
       setFeedsLoadedAt(result.loadedAt);
       setFeedError(undefined);
     } catch (error) {
@@ -87,6 +131,11 @@ function App() {
   const persistChecks = (nextChecks: FeedCheckState[]) => {
     setChecks(nextChecks);
     saveChecks(nextChecks);
+  };
+
+  const persistLocalFeeds = (nextFeeds: FeedItem[]) => {
+    setLocalFeeds(nextFeeds);
+    saveLocalFeeds(nextFeeds);
   };
 
   const handleCheckChange = (check: FeedCheckState) => {
@@ -125,6 +174,7 @@ function App() {
     clearAllLocalData();
     setStocks([]);
     setChecks([]);
+    setLocalFeeds([]);
   };
 
   const handleImport = (json: string) => {
@@ -133,6 +183,7 @@ function App() {
     if (result.ok) {
       setStocks(loadStocks());
       setChecks(loadChecks());
+      setLocalFeeds(loadLocalFeeds());
     }
 
     return result;
@@ -165,7 +216,10 @@ function App() {
         <SettingsPage
           feedsLoadedAt={feedsLoadedAt}
           feedCount={feeds.length}
+          publicFeedCount={publicFeeds.length}
+          localFeeds={localFeeds}
           onReloadFeeds={reloadFeeds}
+          onLocalFeedsChange={persistLocalFeeds}
           onClearLocalData={clearLocalData}
           onImportLocalData={handleImport}
         />
