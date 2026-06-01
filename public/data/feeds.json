@@ -1,0 +1,102 @@
+[
+  {
+    "id": "sample-20260602-010",
+    "title": "大量保有報告書",
+    "url": "https://example.com/disclosure/20260602-010",
+    "source": "sample",
+    "publishedAt": "2026-06-02T14:30:00+09:00",
+    "companyName": "サンプル株式会社",
+    "code": "9999",
+    "documentType": "EDINET"
+  },
+  {
+    "id": "sample-20260602-009",
+    "title": "臨時報告書",
+    "url": "https://example.com/disclosure/20260602-009",
+    "source": "sample",
+    "publishedAt": "2026-06-02T14:00:00+09:00",
+    "companyName": "アクセルスペースホールディングス",
+    "code": "402A",
+    "documentType": "EDINET"
+  },
+  {
+    "id": "sample-20260602-008",
+    "title": "2026年3月期 決算短信",
+    "url": "https://example.com/disclosure/20260602-008",
+    "source": "sample",
+    "publishedAt": "2026-06-02T13:00:00+09:00",
+    "companyName": "アイスペース",
+    "code": "9348",
+    "documentType": "決算短信"
+  },
+  {
+    "id": "sample-20260602-007",
+    "title": "大型受注に関するお知らせ",
+    "url": "https://example.com/disclosure/20260602-007",
+    "source": "sample",
+    "publishedAt": "2026-06-02T12:00:00+09:00",
+    "companyName": "アクセルスペースホールディングス",
+    "code": "402A",
+    "documentType": "適時開示"
+  },
+  {
+    "id": "sample-20260602-006",
+    "title": "主要株主の異動に関するお知らせ",
+    "url": "https://example.com/disclosure/20260602-006",
+    "source": "sample",
+    "publishedAt": "2026-06-02T11:30:00+09:00",
+    "companyName": "サンプル株式会社",
+    "code": "9999",
+    "documentType": "適時開示"
+  },
+  {
+    "id": "sample-20260602-005",
+    "title": "監査法人の異動に関するお知らせ",
+    "url": "https://example.com/disclosure/20260602-005",
+    "source": "sample",
+    "publishedAt": "2026-06-02T11:00:00+09:00",
+    "companyName": "アイスペース",
+    "code": "9348",
+    "documentType": "適時開示"
+  },
+  {
+    "id": "sample-20260602-004",
+    "title": "継続企業の前提に関する重要事象等",
+    "url": "https://example.com/disclosure/20260602-004",
+    "source": "sample",
+    "publishedAt": "2026-06-02T10:30:00+09:00",
+    "companyName": "アクセルスペースホールディングス",
+    "code": "402A",
+    "documentType": "適時開示"
+  },
+  {
+    "id": "sample-20260602-003",
+    "title": "自己株式取得に係る事項の決定に関するお知らせ",
+    "url": "https://example.com/disclosure/20260602-003",
+    "source": "sample",
+    "publishedAt": "2026-06-02T10:00:00+09:00",
+    "companyName": "サンプル株式会社",
+    "code": "9999",
+    "documentType": "適時開示"
+  },
+  {
+    "id": "sample-20260602-002",
+    "title": "通期業績予想の修正に関するお知らせ",
+    "url": "https://example.com/disclosure/20260602-002",
+    "source": "sample",
+    "publishedAt": "2026-06-02T09:15:00+09:00",
+    "companyName": "アイスペース",
+    "code": "9348",
+    "documentType": "適時開示"
+  },
+  {
+    "id": "sample-20260602-001",
+    "title": "第三者割当による新株予約権の発行に関するお知らせ",
+    "url": "https://example.com/disclosure/20260602-001",
+    "source": "sample",
+    "publishedAt": "2026-06-02T09:00:00+09:00",
+    "companyName": "アクセルスペースホールディングス",
+    "code": "402A",
+    "documentType": "適時開示"
+  }
+]
