@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Context Platform Core</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail" aria-label="Primary">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">C</span>
+          <span>Context Core</span>
+        </div>
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="home" title="今日の1枚">
+            <span aria-hidden="true">1</span>
+            <span>今日</span>
+          </button>
+          <button class="nav-item" data-view="dictionary" title="用語図鑑">
+            <span aria-hidden="true">D</span>
+            <span>図鑑</span>
+          </button>
+          <button class="nav-item" data-view="event-map" title="イベントマップ">
+            <span aria-hidden="true">M</span>
+            <span>地図</span>
+          </button>
+          <button class="nav-item" data-view="timeline" title="タイムライン">
+            <span aria-hidden="true">T</span>
+            <span>時系列</span>
+          </button>
+          <button class="nav-item" data-view="checkpoint" title="チェックポイント">
+            <span aria-hidden="true">C</span>
+            <span>確認</span>
+          </button>
+          <button class="nav-item" data-view="reflection" title="振り返り">
+            <span aria-hidden="true">R</span>
+            <span>振返</span>
+          </button>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">base branch</p>
+            <h1 id="view-title">今日の1枚</h1>
+          </div>
+          <div class="subject-chip">
+            <span class="chip-label">対象</span>
+            <strong id="subject-name"></strong>
+          </div>
+        </header>
+
+        <section id="home" class="view active"></section>
+        <section id="dictionary" class="view"></section>
+        <section id="event-map" class="view"></section>
+        <section id="timeline" class="view"></section>
+        <section id="checkpoint" class="view"></section>
+        <section id="reflection" class="view"></section>
+      </main>
+    </div>
+
+    <script src="./demo-data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
