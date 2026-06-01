@@ -7,9 +7,15 @@ type StockListProps = {
   stocks: Stock[];
   onStocksChange: (stocks: Stock[]) => void;
   onAddSampleStocks: () => void;
+  onStockAdded?: () => void;
 };
 
-export function StockList({ stocks, onStocksChange, onAddSampleStocks }: StockListProps) {
+export function StockList({
+  stocks,
+  onStocksChange,
+  onAddSampleStocks,
+  onStockAdded
+}: StockListProps) {
   const [editingStock, setEditingStock] = useState<Stock | undefined>();
 
   const saveStock = (stock: Stock) => {
@@ -20,6 +26,10 @@ export function StockList({ stocks, onStocksChange, onAddSampleStocks }: StockLi
 
     onStocksChange(next);
     setEditingStock(undefined);
+
+    if (!exists) {
+      onStockAdded?.();
+    }
   };
 
   const deleteStock = (stock: Stock) => {

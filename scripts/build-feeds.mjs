@@ -1,28 +1,9 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 
 const OUTPUT_PATH = "public/data/feeds.json";
-
-const FEED_SOURCES = [
-  {
-    source: "tdnet",
-    kind: "rss",
-    url: "https://example.com/tdnet.xml",
-    enabled: false
-  },
-  {
-    source: "edinet",
-    kind: "rss-or-api",
-    url: "https://example.com/edinet.xml",
-    enabled: false
-  },
-  {
-    source: "news",
-    kind: "rss",
-    url: "https://example.com/news.xml",
-    enabled: false
-  }
-];
+const RSS_CONFIG_PATH = "config/rss-feeds.json";
+const ALLOWED_SOURCES = new Set(["tdnet", "edinet", "news"]);
 
 const todayJst = () => {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -74,7 +55,25 @@ const sourceDocumentType = (source) => {
   return "ニュース";
 };
 
-const parseXmlFeed = (xml, source) => {
+const parseTitleMeta = (title) => {
+  const separatorIndex = title.indexOf(":");
+  const codeMatch = title.match(/証券コード[：:]\s*([0-9A-Z]{4})/i);
+
+  if (separatorIndex <= 0) {
+    return {
+      companyName: undefined,
+      code: codeMatch?.[1]
+    };
+  }
+
+  return {
+    companyName: title.slice(0, separatorIndex).trim(),
+    code: codeMatch?.[1]
+  };
+};
+
+const parseXmlFeed = (xml, feedSource) => {
+  const source = feedSource.source;
   const rssBlocks = xml.match(/<item\b[\s\S]*?<\/item>/gi) ?? [];
   const atomBlocks = xml.match(/<entry\b[\s\S]*?<\/entry>/gi) ?? [];
   const blocks = rssBlocks.length > 0 ? rssBlocks : atomBlocks;
@@ -90,15 +89,21 @@ const parseXmlFeed = (xml, source) => {
         return undefined;
       }
 
+      const meta = parseTitleMeta(title);
+
       return {
         id: hashId(source, title, link),
         title,
         url: link,
         source,
         publishedAt: publishedAt ? new Date(publishedAt).toISOString() : undefined,
-        documentType: sourceDocumentType(source),
+        companyName: meta.companyName,
+        code: meta.code,
+        documentType: feedSource.documentType ?? sourceDocumentType(source),
         raw: {
-          importedFrom: "rss"
+          importedFrom: feedSource.kind ?? "rss",
+          sourceId: feedSource.id,
+          sourceName: feedSource.name
         }
       };
     })
@@ -124,6 +129,34 @@ const fetchText = async (url) => {
     return await response.text();
   } finally {
     clearTimeout(timer);
+  }
+};
+
+const isValidFeedSource = (value) =>
+  value &&
+  typeof value === "object" &&
+  typeof value.id === "string" &&
+  typeof value.source === "string" &&
+  ALLOWED_SOURCES.has(value.source) &&
+  typeof value.kind === "string" &&
+  typeof value.enabled === "boolean";
+
+const loadFeedSources = async () => {
+  try {
+    const raw = await readFile(RSS_CONFIG_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    const sources = Array.isArray(parsed) ? parsed.filter(isValidFeedSource) : [];
+
+    if (sources.length === 0) {
+      console.warn(`${RSS_CONFIG_PATH}: valid sources not found`);
+    }
+
+    return sources;
+  } catch (error) {
+    console.warn(
+      `failed to read ${RSS_CONFIG_PATH}: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return [];
   }
 };
 
@@ -238,21 +271,32 @@ const uniqueFeeds = (feeds) => {
 
 const main = async () => {
   const collected = [];
+  const feedSources = await loadFeedSources();
 
-  for (const feedSource of FEED_SOURCES) {
+  for (const feedSource of feedSources) {
     if (!feedSource.enabled) {
       console.log(`skip ${feedSource.source}: disabled`);
       continue;
     }
 
+    if (!feedSource.url) {
+      console.log(`skip ${feedSource.source}: empty url`);
+      continue;
+    }
+
+    if (!["rss", "atom", "rss-or-api"].includes(feedSource.kind)) {
+      console.log(`skip ${feedSource.source}: unsupported kind ${feedSource.kind}`);
+      continue;
+    }
+
     try {
       const xml = await fetchText(feedSource.url);
-      const parsed = parseXmlFeed(xml, feedSource.source);
+      const parsed = parseXmlFeed(xml, feedSource).slice(0, feedSource.maxItems ?? 200);
       collected.push(...parsed);
-      console.log(`fetched ${feedSource.source}: ${parsed.length} items`);
+      console.log(`fetched ${feedSource.id}: ${parsed.length} items`);
     } catch (error) {
       console.warn(
-        `failed ${feedSource.source}: ${error instanceof Error ? error.message : String(error)}`
+        `failed ${feedSource.id}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

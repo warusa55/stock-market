@@ -1,0 +1,35 @@
+[
+  {
+    "id": "tdnet-yanoshin-recent",
+    "name": "TDnet WEB-API recent RSS",
+    "source": "tdnet",
+    "kind": "rss",
+    "url": "https://webapi.yanoshin.jp/webapi/tdnet/list/recent.rss",
+    "enabled": true,
+    "documentType": "適時開示",
+    "maxItems": 200,
+    "notes": "非公式のTDnet RSS。無料・認証なしで取得できる範囲の見出しだけを使う。"
+  },
+  {
+    "id": "edinet-documents-placeholder",
+    "name": "EDINET documents",
+    "source": "edinet",
+    "kind": "rss-or-api",
+    "url": "",
+    "enabled": false,
+    "documentType": "EDINET",
+    "maxItems": 100,
+    "notes": "EDINETはRSSではなくAPI対応を別途実装する想定。APIキーや利用条件を確認してから有効化する。"
+  },
+  {
+    "id": "news-search-placeholder",
+    "name": "Company news RSS",
+    "source": "news",
+    "kind": "rss",
+    "url": "",
+    "enabled": false,
+    "documentType": "ニュース",
+    "maxItems": 100,
+    "notes": "ニュースRSSを追加する場合の枠。広すぎるテーマ語検索は避ける。"
+  }
+]

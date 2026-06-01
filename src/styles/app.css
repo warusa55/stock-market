@@ -177,6 +177,32 @@ label span {
   background: #ffffff;
 }
 
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-strip div {
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.summary-strip span {
+  display: block;
+  color: #526173;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.summary-strip strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.35rem;
+}
+
 .segmented-control {
   display: flex;
   flex-wrap: wrap;
@@ -714,6 +740,7 @@ mark {
   .form-grid,
   .form-grid.two,
   .filter-grid,
+  .summary-strip,
   .risk-columns,
   .stock-notes {
     grid-template-columns: 1fr;

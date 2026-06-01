@@ -167,6 +167,7 @@ function App() {
 
     if (additions.length > 0) {
       persistStocks([...stocks, ...additions]);
+      setActiveTab("dashboard");
     }
   };
 
@@ -207,6 +208,7 @@ function App() {
           stocks={stocks}
           onStocksChange={persistStocks}
           onAddSampleStocks={addSampleStocks}
+          onStockAdded={() => setActiveTab("dashboard")}
         />
       ) : null}
 

@@ -112,7 +112,7 @@ export function Dashboard({
         <div>
           <h2>今日の注意候補</h2>
           <p>
-            登録銘柄と `feeds.json` の見出しを照合し、危険語・注目語に基づいて確認順に並べます。
+            登録銘柄と収集済み見出しを自動照合し、危険語・注目語に基づいて確認順に並べます。
           </p>
         </div>
         <button type="button" className="primary-button" onClick={onAddSampleStocks}>
@@ -121,6 +121,21 @@ export function Dashboard({
       </div>
 
       {feedError ? <p className="alert-message">{feedError}</p> : null}
+
+      <div className="summary-strip" aria-label="照合状況">
+        <div>
+          <span>登録銘柄</span>
+          <strong>{stocks.length}件</strong>
+        </div>
+        <div>
+          <span>収集済み見出し</span>
+          <strong>{feeds.length}件</strong>
+        </div>
+        <div>
+          <span>一致候補</span>
+          <strong>{matchedItems.length}件</strong>
+        </div>
+      </div>
 
       <div className="toolbar">
         <div className="segmented-control" aria-label="ソースフィルタ">
