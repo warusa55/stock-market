@@ -1,6 +1,7 @@
-import { DomainPluginBase } from "../../core/plugin-base.js";
-import { createReflectionReport } from "../../core/reflection.js";
-import { observeScoring } from "../../core/scoring.js";
+import {
+  createOneCardFromTemplate,
+  TemplateDrivenPluginBase
+} from "../../core/template-driven-plugin.js";
 import {
   stockCheckpoints,
   stockDictionaries,
@@ -9,12 +10,6 @@ import {
   stockInformationItems,
   stockTimelineItems
 } from "./stock-data.js";
-
-function textOf(item) {
-  return [item?.title, item?.bodyExcerpt, ...(item?.tags ?? []), item?.raw?.eventType]
-    .filter(Boolean)
-    .join(" ");
-}
 
 function progressRate(item) {
   const total = item?.raw?.acquiredAmountTotal;
@@ -25,13 +20,30 @@ function progressRate(item) {
   return Math.round((total / max) * 100);
 }
 
-function detectStockKind(item) {
-  const text = textOf(item);
-
-  if (text.includes("self_share_buyback_status") || text.includes("取得状況")) {
+function detectStockKind(item, { plugin }) {
+  const eventType = item?.raw?.eventType;
+  if (eventType === "self_share_buyback_status") {
     return "buyback-status";
   }
-  if (text.includes("self_share_buyback_end") || text.includes("取得終了")) {
+  if (eventType === "self_share_buyback_end") {
+    return "buyback-end";
+  }
+  if (eventType === "downward_revision") {
+    return "downward-revision";
+  }
+  if (eventType === "upward_revision") {
+    return "upward-revision";
+  }
+  if (eventType === "tob_start") {
+    return "tob";
+  }
+
+  const text = plugin.getItemSearchText(item);
+
+  if (text.includes("取得状況")) {
+    return "buyback-status";
+  }
+  if (text.includes("取得終了")) {
     return "buyback-end";
   }
   if (text.includes("自己株式") || text.includes("自社株買い")) {
@@ -198,23 +210,7 @@ const cardTemplates = {
   }
 };
 
-function createCardFromTemplate({ template, subject, item, now }) {
-  const rate = progressRate(item);
-  const focusPoints =
-    rate == null ? template.focusPoints : [...template.focusPoints, `進捗率は約${rate}%か`];
-
-  return {
-    ...template,
-    id: template.id,
-    domainId: stockDomainId,
-    subjectId: subject?.id,
-    itemId: item?.id,
-    focusPoints,
-    createdAt: now
-  };
-}
-
-export class StockPlugin extends DomainPluginBase {
+export class StockPlugin extends TemplateDrivenPluginBase {
   constructor() {
     super({
       id: stockDomainId,
@@ -222,6 +218,12 @@ export class StockPlugin extends DomainPluginBase {
       version: "0.1.0",
       dictionaries: stockDictionaries,
       eventMaps: stockEventMaps,
+      informationItems: stockInformationItems,
+      timelineItems: stockTimelineItems,
+      checkpoints: stockCheckpoints,
+      cardTemplates,
+      defaultCardKind: "general",
+      detectCardKind: detectStockKind,
       cardRules: [
         {
           id: "stock-disclosure-one-card",
@@ -246,49 +248,20 @@ export class StockPlugin extends DomainPluginBase {
     });
   }
 
-  createCard({ subject, item, now = new Date().toISOString() } = {}) {
-    const source = item ?? stockInformationItems[0];
-    const kind = detectStockKind(source);
-    const template = cardTemplates[kind] ?? cardTemplates.general;
+  createCardFromTemplate({ template, subject, item, now }) {
+    const rate = progressRate(item);
+    const focusPoints =
+      rate == null || !template
+        ? template?.focusPoints
+        : [...template.focusPoints, `進捗率は約${rate}%か`];
 
-    return createCardFromTemplate({
+    return createOneCardFromTemplate({
+      domainId: this.id,
       template,
       subject,
-      item: source,
-      now
-    });
-  }
-
-  createCards(contexts = stockInformationItems.map((item) => ({ item }))) {
-    return super.createCards(contexts);
-  }
-
-  createCheckpoints({ card } = {}) {
-    if (!card) {
-      return stockCheckpoints;
-    }
-
-    return stockCheckpoints.filter((checkpoint) => checkpoint.relatedCardIds?.includes(card.id));
-  }
-
-  score(input) {
-    return observeScoring({
-      domainId: this.id,
-      logs: input.logs ?? [],
-      cards: input.cards ?? this.createCards(),
-      dictionaryEntries: input.dictionaryEntries ?? stockDictionaries,
-      eventMaps: input.eventMaps ?? stockEventMaps,
-      timelineItems: input.timelineItems ?? stockTimelineItems
-    });
-  }
-
-  reflect({ logs, periodStart, periodEnd, targetUserId }) {
-    return createReflectionReport({
-      domainId: this.id,
-      logs,
-      periodStart,
-      periodEnd,
-      targetUserId
+      item,
+      now,
+      overrides: focusPoints ? { focusPoints } : {}
     });
   }
 }

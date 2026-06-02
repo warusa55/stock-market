@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DomainPluginBase } from "../src/core/plugin-base.js";
+import { TemplateDrivenPluginBase } from "../src/core/template-driven-plugin.js";
 import { createMarketRegistry } from "../src/plugins/market/index.js";
 import { createFundPlugin } from "../src/plugins/fund/fund-plugin.js";
 import { fundInformationItems, fundSubject } from "../src/plugins/fund/fund-data.js";
 import { createStockPlugin } from "../src/plugins/stock/stock-plugin.js";
 import { stockInformationItems, stockSubject } from "../src/plugins/stock/stock-data.js";
 
-test("stock plugin derives from DomainPluginBase and exposes stock dictionaries", () => {
+test("stock plugin derives from TemplateDrivenPluginBase and exposes stock dictionaries", () => {
   const plugin = createStockPlugin();
 
-  assert.ok(plugin instanceof DomainPluginBase);
+  assert.ok(plugin instanceof TemplateDrivenPluginBase);
   assert.equal(plugin.id, "stock");
   assert.equal(plugin.findDictionaryEntry("自社株買い").id, "stock-term-self-share-buyback");
   assert.equal(plugin.findEventMap("stock-event-self-share-buyback").nodes.length, 4);
@@ -45,10 +45,10 @@ test("stock plugin maps TOB items to the TOB event map", () => {
   assert.equal(plugin.createCheckpoints({ card })[0].id, "checkpoint-stock-tob");
 });
 
-test("fund plugin derives from DomainPluginBase and exposes fund dictionaries", () => {
+test("fund plugin derives from TemplateDrivenPluginBase and exposes fund dictionaries", () => {
   const plugin = createFundPlugin();
 
-  assert.ok(plugin instanceof DomainPluginBase);
+  assert.ok(plugin instanceof TemplateDrivenPluginBase);
   assert.equal(plugin.id, "fund");
   assert.equal(plugin.findDictionaryEntry("インデックス").id, "fund-term-index");
   assert.equal(plugin.findEventMap("fund-event-price-context").nodes.length, 4);

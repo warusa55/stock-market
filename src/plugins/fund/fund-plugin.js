@@ -1,6 +1,4 @@
-import { DomainPluginBase } from "../../core/plugin-base.js";
-import { createReflectionReport } from "../../core/reflection.js";
-import { observeScoring } from "../../core/scoring.js";
+import { TemplateDrivenPluginBase } from "../../core/template-driven-plugin.js";
 import {
   fundCheckpoints,
   fundDictionaries,
@@ -10,27 +8,31 @@ import {
   fundTimelineItems
 } from "./fund-data.js";
 
-function textOf(item) {
-  return [item?.title, item?.bodyExcerpt, ...(item?.tags ?? []), item?.raw?.eventType]
-    .filter(Boolean)
-    .join(" ");
-}
+function detectFundKind(item, { plugin }) {
+  const eventType = item?.raw?.eventType;
+  if (eventType === "index_rate_context") {
+    return "price-context";
+  }
+  if (eventType === "monthly_report") {
+    return "monthly-report";
+  }
+  if (eventType === "currency_hedge_context") {
+    return "currency-hedge";
+  }
 
-function detectFundKind(item) {
-  const text = textOf(item);
+  const text = plugin.getItemSearchText(item);
 
   if (
-    text.includes("index_rate_context") ||
     text.includes("NASDAQ100") ||
     text.includes("金利") ||
     text.includes("interest-rate")
   ) {
     return "price-context";
   }
-  if (text.includes("monthly_report") || text.includes("月次") || text.includes("組入")) {
+  if (text.includes("月次") || text.includes("組入")) {
     return "monthly-report";
   }
-  if (text.includes("currency_hedge_context") || text.includes("為替ヘッジ")) {
+  if (text.includes("為替ヘッジ")) {
     return "currency-hedge";
   }
 
@@ -133,18 +135,7 @@ const cardTemplates = {
   }
 };
 
-function createCardFromTemplate({ template, subject, item, now }) {
-  return {
-    ...template,
-    id: template.id,
-    domainId: fundDomainId,
-    subjectId: subject?.id,
-    itemId: item?.id,
-    createdAt: now
-  };
-}
-
-export class FundPlugin extends DomainPluginBase {
+export class FundPlugin extends TemplateDrivenPluginBase {
   constructor() {
     super({
       id: fundDomainId,
@@ -152,6 +143,12 @@ export class FundPlugin extends DomainPluginBase {
       version: "0.1.0",
       dictionaries: fundDictionaries,
       eventMaps: fundEventMaps,
+      informationItems: fundInformationItems,
+      timelineItems: fundTimelineItems,
+      checkpoints: fundCheckpoints,
+      cardTemplates,
+      defaultCardKind: "general",
+      detectCardKind: detectFundKind,
       cardRules: [
         {
           id: "fund-product-one-card",
@@ -173,52 +170,6 @@ export class FundPlugin extends DomainPluginBase {
           prompt: "売買判断ではなく、商品構造と外部環境の読み方に関する観察コメントを返す。"
         }
       ]
-    });
-  }
-
-  createCard({ subject, item, now = new Date().toISOString() } = {}) {
-    const source = item ?? fundInformationItems[0];
-    const kind = detectFundKind(source);
-    const template = cardTemplates[kind] ?? cardTemplates.general;
-
-    return createCardFromTemplate({
-      template,
-      subject,
-      item: source,
-      now
-    });
-  }
-
-  createCards(contexts = fundInformationItems.map((item) => ({ item }))) {
-    return super.createCards(contexts);
-  }
-
-  createCheckpoints({ card } = {}) {
-    if (!card) {
-      return fundCheckpoints;
-    }
-
-    return fundCheckpoints.filter((checkpoint) => checkpoint.relatedCardIds?.includes(card.id));
-  }
-
-  score(input) {
-    return observeScoring({
-      domainId: this.id,
-      logs: input.logs ?? [],
-      cards: input.cards ?? this.createCards(),
-      dictionaryEntries: input.dictionaryEntries ?? fundDictionaries,
-      eventMaps: input.eventMaps ?? fundEventMaps,
-      timelineItems: input.timelineItems ?? fundTimelineItems
-    });
-  }
-
-  reflect({ logs, periodStart, periodEnd, targetUserId }) {
-    return createReflectionReport({
-      domainId: this.id,
-      logs,
-      periodStart,
-      periodEnd,
-      targetUserId
     });
   }
 }
