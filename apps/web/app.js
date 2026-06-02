@@ -1,4 +1,11 @@
 import { executeAcquisitionRequest, loadContextData } from "./data-source.js";
+import {
+  createTodayCard,
+  renderTodayCardFloating,
+  resolveTodayCardState,
+  saveTodayCardState,
+  updateTodayCardStateStatus
+} from "./today-card-floating.js";
 
 const defaultInput = {
   subjectName: "",
@@ -18,7 +25,7 @@ const defaultInput = {
   let data = await loadContextData();
   let storageKey = `context-platform-${data.registryId}-${data.domainId}-state`;
   const viewTitles = {
-    home: "今日の1枚",
+    home: "概要",
     input: "入力",
     dictionary: "用語図鑑",
     "event-map": "イベントマップ",
@@ -28,6 +35,8 @@ const defaultInput = {
   };
 
   let state = loadState();
+  let todayCard = createTodayCard(data.card, { subject: data.subject });
+  let todayCardState = resolveTodayCardState(todayCard);
 
   function loadState() {
     try {
@@ -97,54 +106,89 @@ const defaultInput = {
     document.getElementById("view-title").textContent = viewTitles[viewId];
   }
 
+  function currentTickerCode() {
+    return (
+      data.item?.raw?.tickerCode ??
+      state.input?.subjectCode ??
+      data.subject?.tags?.find((tag) => String(tag).startsWith("ticker:"))?.slice("ticker:".length) ??
+      ""
+    );
+  }
+
+  function currentSourceLabel() {
+    return data.item?.raw?.sourceLabel ?? data.item?.sourceType ?? state.input?.sourceKind ?? "未指定";
+  }
+
+  function renderTimelinePreview(items = data.timeline.slice(0, 3)) {
+    if (items.length === 0) {
+      return `<p class="subtitle">まだ材料がありません。</p>`;
+    }
+
+    return `
+      <div class="compact-list">
+        ${items
+          .map((item) => {
+            return `
+              <article class="compact-item">
+                <span class="tag">${new Date(item.occurredAt).toLocaleDateString("ja-JP")}</span>
+                <h3>${escapeHtml(item.title)}</h3>
+                <p>${escapeHtml(item.summary)}</p>
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
   function renderHome() {
-    const card = data.card;
     document.getElementById("home").innerHTML = `
       <div class="layout-grid">
-        <article class="card">
+        <article class="card holding-card">
           <div class="card-title">
             <div>
-              <h2>${escapeHtml(card.title)}</h2>
-              <p class="subtitle">${escapeHtml(card.subtitle)}</p>
+              <h2>${escapeHtml(data.subject.name)}</h2>
+              <p class="subtitle">保有・監視銘柄の入口</p>
             </div>
-            <span class="status-pill">${escapeHtml(card.difficulty ?? "normal")}</span>
+            <span class="status-pill">${escapeHtml(data.domainName)}</span>
           </div>
-          <p>${escapeHtml(card.shortExplanation)}</p>
-          <h3>見るポイント</h3>
-          ${listHtml(card.focusPoints, "focus-list")}
-          <h3>今日の理解</h3>
-          <p>${escapeHtml(card.todayTakeaway)}</p>
+          <div class="summary-grid">
+            <div class="summary-metric">
+              <span class="muted">コード/ID</span>
+              <strong>${escapeHtml(currentTickerCode() || "未入力")}</strong>
+            </div>
+            <div class="summary-metric">
+              <span class="muted">取得元</span>
+              <strong>${escapeHtml(currentSourceLabel())}</strong>
+            </div>
+            <div class="summary-metric">
+              <span class="muted">検出語句</span>
+              <strong>${escapeHtml(String(data.dictionaryMatches.length))}</strong>
+            </div>
+          </div>
+          <h3>最新材料</h3>
+          <article class="compact-item featured">
+            <span class="tag">${escapeHtml(data.item?.sourceType ?? "manual")}</span>
+            <h3>${escapeHtml(data.item?.title ?? "材料なし")}</h3>
+            <p>${escapeHtml(data.item?.bodyExcerpt || "入力または取得から、ここに最新材料を表示します。")}</p>
+          </article>
           <div class="action-row">
-            ${(card.nextActions ?? [])
-              .map((action) => {
-                const active = state.selectedActions.includes(action.id) ? " active" : "";
-                return `<button class="tool-button${active}" data-action="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`;
-              })
-              .join("")}
+            <button class="tool-button active" data-view="input">銘柄/材料を入力</button>
+            <button class="tool-button" data-view="timeline">時系列を見る</button>
+            <button class="tool-button" data-view="dictionary">図鑑を見る</button>
           </div>
         </article>
         <aside class="panel">
           <h2>検出語句</h2>
           ${renderMatches()}
-          <div class="action-row">
-            <button class="tool-button" data-view="input">入力</button>
-          </div>
-          <h2>反応</h2>
-          <div class="reaction-row">
-            ${[
-              ["understood", "分かった"],
-              ["somewhat_understood", "なんとなく"],
-              ["unclear", "まだ分からん"],
-              ["important", "重要そう"]
-            ]
-              .map(([id, label]) => {
-                const active = state.finalReaction === id ? " active" : "";
-                return `<button class="tool-button warn${active}" data-reaction="${id}">${label}</button>`;
-              })
-              .join("")}
-          </div>
+          <h2>取得候補</h2>
+          ${renderAcquisitionRequests()}
         </aside>
       </div>
+      <section class="panel overview-section">
+        <h2>最近の流れ</h2>
+        ${renderTimelinePreview()}
+      </section>
     `;
   }
 
@@ -468,6 +512,8 @@ const defaultInput = {
   }
 
   function renderAll() {
+    todayCard = createTodayCard(data.card, { subject: data.subject });
+    todayCardState = resolveTodayCardState(todayCard);
     document.getElementById("subject-name").textContent = data.subject.name;
     renderHome();
     renderInput();
@@ -476,12 +522,54 @@ const defaultInput = {
     renderTimeline();
     renderCheckpoint();
     renderReflection();
+    renderTodayCard();
+  }
+
+  function renderTodayCard() {
+    let root = document.getElementById("today-card-floating-root");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "today-card-floating-root";
+      document.body.append(root);
+    }
+
+    root.innerHTML = renderTodayCardFloating(todayCard, todayCardState, escapeHtml);
   }
 
   document.addEventListener("click", async (event) => {
     const navItem = event.target.closest("[data-view]");
     if (navItem) {
       switchView(navItem.dataset.view);
+      return;
+    }
+
+    const todayCardExpand = event.target.closest("[data-today-card-expand]");
+    if (todayCardExpand) {
+      todayCardState = updateTodayCardStateStatus(todayCardState, "opened");
+      saveTodayCardState(todayCardState);
+      renderTodayCard();
+      return;
+    }
+
+    const todayCardStatus = event.target.closest("[data-today-card-status]");
+    if (todayCardStatus) {
+      todayCardState = updateTodayCardStateStatus(todayCardState, todayCardStatus.dataset.todayCardStatus);
+      saveTodayCardState(todayCardState);
+      renderTodayCard();
+      return;
+    }
+
+    const todayCardView = event.target.closest("[data-today-card-view]");
+    if (todayCardView) {
+      if (todayCardView.dataset.todayCardView === "dictionary") {
+        (todayCard.relatedTermIds ?? []).forEach((id) => addUnique("openedDictionaryIds", id));
+        renderAll();
+        switchView("dictionary");
+      } else if (todayCardView.dataset.todayCardView === "event-map") {
+        (todayCard.relatedEventMapIds ?? []).forEach((id) => addUnique("openedEventMapIds", id));
+        renderAll();
+        switchView("event-map");
+      }
       return;
     }
 
