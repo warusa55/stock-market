@@ -1,3 +1,10 @@
+import {
+  createInformationItemFromInput,
+  createSubjectFromInput,
+  matchDictionaryEntries,
+  relatedEventMapIdsFromMatches
+} from "../../src/core/dictionary-match.js";
+
 const registryLoaders = {
   market: async () => {
     const module = await import("../../src/plugins/market/index.js");
@@ -114,9 +121,13 @@ function pickTimelineItems(registrySource, plugin) {
   );
 }
 
-function pickEventMap(plugin, card, timelineItems) {
+function pickEventMap(plugin, card, timelineItems, dictionaryMatches) {
   const maps = plugin.listEventMaps();
-  const preferredMapId = card?.relatedEventMapIds?.[0] ?? timelineItems[0]?.relatedEventMapIds?.[0];
+  const matchedEventMapIds = relatedEventMapIdsFromMatches(dictionaryMatches);
+  const preferredMapId =
+    card?.relatedEventMapIds?.[0] ??
+    matchedEventMapIds[0] ??
+    timelineItems[0]?.relatedEventMapIds?.[0];
   const eventMap = maps.find((map) => map.id === preferredMapId) ?? maps[0];
 
   if (!eventMap) {
@@ -147,28 +158,122 @@ function pickCheckpoint(plugin, card) {
   );
 }
 
+function createFallbackCard(plugin, subject, item, dictionaryMatches) {
+  const relatedTermIds = dictionaryMatches.map((match) => match.entry.id);
+  const relatedEventMapIds = relatedEventMapIdsFromMatches(dictionaryMatches);
+
+  return {
+    id: `card-input-${plugin.id}`,
+    domainId: plugin.id,
+    subjectId: subject?.id,
+    itemId: item?.id,
+    title: `今日の1枚: ${item?.title ?? "手入力メモ"}`,
+    subtitle: subject?.name,
+    shortExplanation: item?.bodyExcerpt || "入力された情報から、まず見るところを小さく切ります。",
+    focusPoints:
+      dictionaryMatches.length > 0
+        ? dictionaryMatches.slice(0, 3).map((match) => match.entry.term)
+        : ["何の情報か", "どの言葉が気になるか", "次に見るものは何か"],
+    todayTakeaway:
+      dictionaryMatches.length > 0
+        ? "入力された情報から、辞書に引っかかった言葉を入口にする。"
+        : "入力された情報を、1枚カードとして小さく読む。",
+    relatedTermIds,
+    relatedEventMapIds,
+    nextActions: [
+      ...relatedTermIds.slice(0, 2).map((termId) => ({
+        id: `open-${termId}`,
+        label: "用語を見る",
+        type: "open_dictionary",
+        targetId: termId
+      })),
+      ...relatedEventMapIds.slice(0, 1).map((eventMapId) => ({
+        id: `open-${eventMapId}`,
+        label: "今ここを見る",
+        type: "open_event_map",
+        targetId: eventMapId
+      }))
+    ],
+    difficulty: "easy",
+    createdAt: item?.capturedAt ?? new Date().toISOString()
+  };
+}
+
+function buildInputContext(plugin, baseSubject, input) {
+  if (!input || Object.values(input).every((value) => String(value ?? "").trim() === "")) {
+    return null;
+  }
+
+  const subject = createSubjectFromInput({
+    id: `subject-input-${plugin.id}`,
+    domainId: plugin.id,
+    type: input.subjectType || baseSubject.type || "manual",
+    name: input.subjectName || baseSubject.name,
+    description: input.subjectMemo,
+    tags: input.tags
+  });
+  const item = createInformationItemFromInput({
+    id: `item-input-${plugin.id}`,
+    domainId: plugin.id,
+    subjectId: subject.id,
+    sourceType: input.sourceType || "manual",
+    title: input.title,
+    bodyExcerpt: input.bodyExcerpt,
+    url: input.url,
+    tags: input.tags,
+    eventType: input.eventType
+  });
+  const timelineItem = {
+    id: `timeline-input-${plugin.id}`,
+    domainId: plugin.id,
+    subjectId: subject.id,
+    itemId: item.id,
+    title: item.title,
+    occurredAt: item.publishedAt ?? item.capturedAt,
+    summary: item.bodyExcerpt || item.title,
+    tags: item.tags ?? [],
+    relatedTermIds: [],
+    relatedEventMapIds: [],
+    eventNodeId: undefined
+  };
+
+  return {
+    subject,
+    item,
+    timelineItem
+  };
+}
+
 export async function loadContextData(options = {}) {
   const params = getSearchParams(options);
   const registrySource = await loadRequestedRegistry(params.get("registry"));
   const plugin = pickDomain(registrySource, params.get("domain"));
-  const subject = pickSubject(registrySource, plugin);
+  const baseSubject = pickSubject(registrySource, plugin);
   const informationItems = pickInformationItems(registrySource, plugin);
   const timelineItems = pickTimelineItems(registrySource, plugin);
-  const item = informationItems[0];
-  const card = plugin.createCard({
-    subject,
-    item
-  });
+  const inputContext = buildInputContext(plugin, baseSubject, options.input);
+  const subject = inputContext?.subject ?? baseSubject;
+  const item = inputContext?.item ?? informationItems[0];
+  const dictionary = plugin.listDictionaryEntries();
+  const dictionaryMatches = matchDictionaryEntries(dictionary, item);
+  const card =
+    plugin.createCard({
+      subject,
+      item
+    }) ?? createFallbackCard(plugin, subject, item, dictionaryMatches);
+  const timeline = inputContext ? [inputContext.timelineItem, ...timelineItems] : timelineItems;
 
   return {
     registryId: registrySource.id,
     domainId: plugin.id,
     domainName: plugin.name,
     subject,
+    item,
     card,
-    dictionary: plugin.listDictionaryEntries(),
-    eventMap: pickEventMap(plugin, card, timelineItems),
-    timeline: timelineItems,
+    dictionary,
+    dictionaryMatches,
+    eventMap: pickEventMap(plugin, card, timeline, dictionaryMatches),
+    timeline,
     checkpoint: pickCheckpoint(plugin, card)
   };
 }

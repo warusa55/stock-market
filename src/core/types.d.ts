@@ -319,6 +319,44 @@ export interface TemplateDrivenPluginDefinition extends DomainPluginDefinition {
   ) => string;
 }
 
+export interface DictionaryMatch {
+  entry: DictionaryEntry;
+  matchedTerms: string[];
+  score: number;
+}
+
+export declare function createInformationItemFromInput(params: {
+  id?: string;
+  domainId: DomainId;
+  subjectId?: string;
+  sourceType?: SourceType;
+  title?: string;
+  bodyExcerpt?: string;
+  url?: string;
+  tags?: string[] | string;
+  eventType?: string;
+  now?: () => string;
+}): InformationItem;
+
+export declare function createSubjectFromInput(params: {
+  id?: string;
+  domainId: DomainId;
+  type?: string;
+  name?: string;
+  description?: string;
+  tags?: string[] | string;
+  now?: () => string;
+}): Subject;
+
+export declare function matchDictionaryEntries(
+  entries: DictionaryEntry[],
+  input: InformationItem | string
+): DictionaryMatch[];
+
+export declare function relatedEventMapIdsFromMatches(matches: DictionaryMatch[]): string[];
+
+export declare function relatedTermIdsFromMatches(matches: DictionaryMatch[]): string[];
+
 export declare function itemSearchText(item?: InformationItem): string;
 
 export declare function createOneCardFromTemplate(params: {

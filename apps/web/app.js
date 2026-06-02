@@ -1,10 +1,23 @@
 import { loadContextData } from "./data-source.js";
 
+const defaultInput = {
+  subjectName: "",
+  subjectType: "",
+  subjectMemo: "",
+  sourceType: "manual",
+  title: "",
+  bodyExcerpt: "",
+  url: "",
+  tags: "",
+  eventType: ""
+};
+
 (async function () {
-  const data = await loadContextData();
-  const storageKey = `context-platform-${data.registryId}-${data.domainId}-state`;
+  let data = await loadContextData();
+  let storageKey = `context-platform-${data.registryId}-${data.domainId}-state`;
   const viewTitles = {
     home: "今日の1枚",
+    input: "入力",
     dictionary: "用語図鑑",
     "event-map": "イベントマップ",
     timeline: "タイムライン",
@@ -12,11 +25,12 @@ import { loadContextData } from "./data-source.js";
     reflection: "振り返り"
   };
 
-  const state = loadState();
+  let state = loadState();
 
   function loadState() {
     try {
       return {
+        input: { ...defaultInput },
         openedDictionaryIds: [],
         openedEventMapIds: [],
         selectedActions: [],
@@ -26,6 +40,7 @@ import { loadContextData } from "./data-source.js";
       };
     } catch {
       return {
+        input: { ...defaultInput },
         openedDictionaryIds: [],
         openedEventMapIds: [],
         selectedActions: [],
@@ -37,6 +52,15 @@ import { loadContextData } from "./data-source.js";
 
   function saveState() {
     localStorage.setItem(storageKey, JSON.stringify(state));
+  }
+
+  async function refreshDataFromInput() {
+    data = await loadContextData({
+      input: state.input
+    });
+    storageKey = `context-platform-${data.registryId}-${data.domainId}-state`;
+    saveState();
+    renderAll();
   }
 
   function addUnique(key, value) {
@@ -96,6 +120,11 @@ import { loadContextData } from "./data-source.js";
           </div>
         </article>
         <aside class="panel">
+          <h2>検出語句</h2>
+          ${renderMatches()}
+          <div class="action-row">
+            <button class="tool-button" data-view="input">入力</button>
+          </div>
           <h2>反応</h2>
           <div class="reaction-row">
             ${[
@@ -111,6 +140,94 @@ import { loadContextData } from "./data-source.js";
               .join("")}
           </div>
         </aside>
+      </div>
+    `;
+  }
+
+  function inputValue(name) {
+    return escapeHtml(state.input?.[name] ?? "");
+  }
+
+  function renderInput() {
+    document.getElementById("input").innerHTML = `
+      <div class="layout-grid">
+        <form class="panel input-form" id="context-input-form">
+          <h2>対象</h2>
+          <label>
+            <span>名前</span>
+            <input name="subjectName" value="${inputValue("subjectName")}" autocomplete="off">
+          </label>
+          <label>
+            <span>種別</span>
+            <input name="subjectType" value="${inputValue("subjectType")}" autocomplete="off">
+          </label>
+          <label>
+            <span>メモ</span>
+            <textarea name="subjectMemo" rows="3">${inputValue("subjectMemo")}</textarea>
+          </label>
+          <h2>情報</h2>
+          <label>
+            <span>sourceType</span>
+            <select name="sourceType">
+              ${["manual", "official", "news", "document", "case", "sample"]
+                .map((value) => {
+                  const selected = state.input.sourceType === value ? " selected" : "";
+                  return `<option value="${value}"${selected}>${value}</option>`;
+                })
+                .join("")}
+            </select>
+          </label>
+          <label>
+            <span>タイトル</span>
+            <input name="title" value="${inputValue("title")}" autocomplete="off">
+          </label>
+          <label>
+            <span>本文/メモ</span>
+            <textarea name="bodyExcerpt" rows="5">${inputValue("bodyExcerpt")}</textarea>
+          </label>
+          <label>
+            <span>URL</span>
+            <input name="url" value="${inputValue("url")}" autocomplete="off">
+          </label>
+          <label>
+            <span>tags</span>
+            <input name="tags" value="${inputValue("tags")}" autocomplete="off">
+          </label>
+          <label>
+            <span>eventType</span>
+            <input name="eventType" value="${inputValue("eventType")}" autocomplete="off">
+          </label>
+          <div class="action-row">
+            <button class="tool-button active" type="submit">反映</button>
+            <button class="tool-button" type="button" data-clear-input="true">クリア</button>
+          </div>
+        </form>
+        <aside class="panel">
+          <h2>検出語句</h2>
+          ${renderMatches()}
+        </aside>
+      </div>
+    `;
+  }
+
+  function renderMatches() {
+    const matches = data.dictionaryMatches ?? [];
+    if (matches.length === 0) {
+      return `<p class="subtitle">なし</p>`;
+    }
+
+    return `
+      <div class="match-list">
+        ${matches
+          .map((match) => {
+            return `
+              <button class="match-chip" data-open-term="${escapeHtml(match.entry.id)}">
+                <strong>${escapeHtml(match.entry.term)}</strong>
+                <span>${escapeHtml(match.matchedTerms.join(", "))}</span>
+              </button>
+            `;
+          })
+          .join("")}
       </div>
     `;
   }
@@ -254,6 +371,7 @@ import { loadContextData } from "./data-source.js";
   function renderAll() {
     document.getElementById("subject-name").textContent = data.subject.name;
     renderHome();
+    renderInput();
     renderDictionary();
     renderEventMap();
     renderTimeline();
@@ -309,6 +427,26 @@ import { loadContextData } from "./data-source.js";
       addUnique("selectedCheckpointIds", checkpoint.dataset.checkpoint);
       renderAll();
     }
+
+    const clearInput = event.target.closest("[data-clear-input]");
+    if (clearInput) {
+      state.input = { ...defaultInput };
+      saveState();
+      refreshDataFromInput();
+    }
+  });
+
+  document.addEventListener("submit", (event) => {
+    if (event.target.id !== "context-input-form") {
+      return;
+    }
+
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    state.input = Object.fromEntries(formData.entries());
+    saveState();
+    refreshDataFromInput();
+    switchView("home");
   });
 
   renderAll();
