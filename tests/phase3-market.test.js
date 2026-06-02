@@ -137,3 +137,23 @@ test("market web data source infers stock revision events from input text", asyn
   assert.equal(data.eventMap.id, "stock-event-earnings-revision");
   assert.equal(data.timeline[0].relatedEventMapIds[0], "stock-event-earnings-revision");
 });
+
+test("market web data source enriches stock input from URL content", async () => {
+  const data = await loadContextData({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "7203",
+      url: "https://www.release.tdnet.info/inbs/140120260602000001.pdf"
+    },
+    fetchUrlContent: async () => ({
+      title: "自己株式の取得終了に関するお知らせ",
+      bodyExcerpt: "取得結果と消却予定を確認する開示。"
+    })
+  });
+
+  assert.equal(data.card.id, "card-stock-buyback-end");
+  assert.equal(data.item.title, "自己株式の取得終了に関するお知らせ");
+  assert.equal(data.item.raw.sourceKind, "official_disclosure");
+  assert.equal(data.item.raw.urlContentStatus, "ok");
+  assert.ok(data.acquisitionRequests.some((request) => request.label === "URL本文取得"));
+});

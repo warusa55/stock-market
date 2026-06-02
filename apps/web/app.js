@@ -234,6 +234,8 @@ const defaultInput = {
         <aside class="panel">
           <h2>検出語句</h2>
           ${renderMatches()}
+          <h2>取得候補</h2>
+          ${renderAcquisitionRequests()}
         </aside>
       </div>
     `;
@@ -254,6 +256,33 @@ const defaultInput = {
                 <strong>${escapeHtml(match.entry.term)}</strong>
                 <span>${escapeHtml(match.matchedTerms.join(", "))}</span>
               </button>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  function renderAcquisitionRequests() {
+    const requests = data.acquisitionRequests ?? [];
+    if (requests.length === 0) {
+      return `<p class="subtitle">なし</p>`;
+    }
+
+    return `
+      <div class="acquisition-list">
+        ${requests
+          .map((request) => {
+            const keywords = request.query?.keywords ?? [];
+            return `
+              <article class="acquisition-item">
+                <div>
+                  <span class="tag">${escapeHtml(request.status)}</span>
+                  <h3>${escapeHtml(request.label)}</h3>
+                </div>
+                <p>${escapeHtml(request.summary)}</p>
+                ${keywords.length > 0 ? `<p class="muted">${escapeHtml(keywords.join(", "))}</p>` : ""}
+              </article>
             `;
           })
           .join("")}

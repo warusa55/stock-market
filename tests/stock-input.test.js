@@ -51,6 +51,24 @@ test("createStockInputContext carries ticker, source and event inference", () =>
   assert.equal(context.item.raw.tickerCode, "7203");
   assert.equal(context.item.raw.sourceKind, "official_disclosure");
   assert.equal(context.item.raw.inferredEventType, "self_share_buyback_status");
+  assert.ok(context.item.raw.acquisitionRequestIds.includes("stock-acquire-official_disclosure-7203"));
   assert.deepEqual(context.timelineItem.relatedEventMapIds, ["stock-event-self-share-buyback"]);
   assert.ok(context.timelineItem.relatedTermIds.includes("stock-term-self-share-buyback-status"));
+});
+
+test("createStockInputContext infers source kind from URL", () => {
+  const context = createStockInputContext({
+    baseSubject: stockSubject,
+    input: {
+      subjectCode: "7203",
+      url: "https://disclosure2.edinet-fsa.go.jp/example",
+      title: "大量保有報告書",
+      bodyExcerpt: "保有割合の変更報告書が提出された。"
+    }
+  });
+
+  assert.equal(context.item.sourceType, "official");
+  assert.equal(context.item.raw.sourceKind, "edinet");
+  assert.equal(context.item.raw.inferredEventType, "large_shareholding_report");
+  assert.equal(context.acquisitionRequests[0].label, "URL本文取得");
 });

@@ -293,6 +293,25 @@ h3 {
   font-size: 0.82rem;
 }
 
+.acquisition-list {
+  display: grid;
+  gap: 10px;
+}
+
+.acquisition-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.acquisition-item h3,
+.acquisition-item p {
+  margin-bottom: 0;
+}
+
 .tool-button {
   min-height: 38px;
   padding: 8px 12px;

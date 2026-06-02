@@ -1,9 +1,11 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
+import { extractUrlContentFromHtml } from "../src/core/url-content.js";
 
 const DEFAULT_PORT = 6173;
 const MAX_PORT_ATTEMPTS = 20;
+const FETCH_TIMEOUT_MS = 8000;
 const ROOT = process.cwd();
 
 const mimeTypes = {
@@ -45,6 +47,69 @@ function sendText(response, statusCode, text) {
   response.end(text);
 }
 
+function sendJson(response, statusCode, payload) {
+  response.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
+  response.end(JSON.stringify(payload));
+}
+
+function isBlockedFetchHost(hostname) {
+  const host = String(hostname ?? "").toLowerCase();
+  return (
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    host.startsWith("127.") ||
+    host.startsWith("10.") ||
+    host.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  );
+}
+
+async function handleUrlContentRequest(url, response) {
+  const target = url.searchParams.get("url");
+  let targetUrl;
+
+  try {
+    targetUrl = new URL(target);
+  } catch {
+    sendJson(response, 400, { error: "invalid_url" });
+    return;
+  }
+
+  if (!["http:", "https:"].includes(targetUrl.protocol) || isBlockedFetchHost(targetUrl.hostname)) {
+    sendJson(response, 400, { error: "blocked_url" });
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const upstream = await fetch(targetUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "ContextPlatformDevServer/0.1"
+      }
+    });
+    const html = await upstream.text();
+
+    if (!upstream.ok) {
+      sendJson(response, upstream.status, { error: "fetch_failed", status: upstream.status });
+      return;
+    }
+
+    sendJson(response, 200, extractUrlContentFromHtml(html, { url: targetUrl.href }));
+  } catch {
+    sendJson(response, 502, { error: "fetch_failed" });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function createStaticServer() {
   return createServer((request, response) => {
     if (!request.url || request.method !== "GET") {
@@ -53,6 +118,11 @@ function createStaticServer() {
     }
 
     const url = new URL(request.url, "http://localhost");
+    if (url.pathname === "/api/url-content") {
+      handleUrlContentRequest(url, response);
+      return;
+    }
+
     if (url.pathname === "/") {
       response.writeHead(302, {
         Location: `/apps/web/index.html${url.search}`

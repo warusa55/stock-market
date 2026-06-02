@@ -3,39 +3,15 @@ import {
   createSubjectFromInput
 } from "../../core/dictionary-match.js";
 import { stockDomainId } from "./stock-data.js";
+import {
+  createStockAcquisitionRequests,
+  extractTickerCode,
+  findStockAcquisitionSource,
+  inferStockSourceKindFromUrl,
+  stockAcquisitionSources
+} from "./stock-acquisition.js";
 
-export const stockAcquisitionSources = [
-  {
-    id: "official_disclosure",
-    label: "適時開示",
-    sourceType: "official",
-    description: "会社が発表した適時開示やIR資料を入力する。"
-  },
-  {
-    id: "company_ir",
-    label: "会社IR",
-    sourceType: "official",
-    description: "会社サイトのIRニュース、決算資料、説明資料を入力する。"
-  },
-  {
-    id: "edinet",
-    label: "EDINET",
-    sourceType: "official",
-    description: "大量保有報告書や有価証券報告書などの法定開示を入力する。"
-  },
-  {
-    id: "news",
-    label: "ニュース",
-    sourceType: "news",
-    description: "ニュース記事や外部メディアの見出し・本文を入力する。"
-  },
-  {
-    id: "memo",
-    label: "手動メモ",
-    sourceType: "manual",
-    description: "ユーザーが見た内容を手動で入力する。"
-  }
-];
+export { extractTickerCode, stockAcquisitionSources };
 
 export const stockEventTypeRules = [
   {
@@ -113,6 +89,8 @@ function inputSearchText(input) {
     input?.subjectName,
     input?.title,
     input?.bodyExcerpt,
+    input?.urlContent?.title,
+    input?.urlContent?.bodyExcerpt,
     input?.url,
     input?.tags,
     input?.eventType,
@@ -120,12 +98,6 @@ function inputSearchText(input) {
   ]
     .filter(Boolean)
     .join(" ");
-}
-
-export function extractTickerCode(value) {
-  const text = String(value ?? "");
-  const match = text.match(/(?:^|[^\dA-Za-z])(\d{4}[A-Za-z]?)(?=$|[^\dA-Za-z])/);
-  return match?.[1]?.toUpperCase() ?? "";
 }
 
 export function inferStockEventType(input) {
@@ -179,19 +151,18 @@ export function inferStockEventType(input) {
   };
 }
 
-export function findStockAcquisitionSource(sourceKind) {
-  return (
-    stockAcquisitionSources.find((source) => source.id === sourceKind) ??
-    stockAcquisitionSources.find((source) => source.id === "memo")
-  );
-}
-
 export function createStockInputContext({ input, baseSubject }) {
   const tickerCode =
     input?.subjectCode?.trim() ||
     extractTickerCode([input?.subjectName, input?.title, input?.bodyExcerpt, input?.tags].join(" "));
   const inference = inferStockEventType(input);
-  const source = findStockAcquisitionSource(input?.sourceKind);
+  const inferredSourceKind = input?.sourceKind || inferStockSourceKindFromUrl(input?.url);
+  const source = findStockAcquisitionSource(inferredSourceKind);
+  const acquisitionRequests = createStockAcquisitionRequests({
+    ...input,
+    subjectCode: tickerCode,
+    sourceKind: source.id
+  });
   const subjectName = input?.subjectName?.trim() || tickerCode || baseSubject.name;
   const subject = createSubjectFromInput({
     id: tickerCode ? `subject-stock-${tickerCode}` : "subject-stock-input",
@@ -220,7 +191,9 @@ export function createStockInputContext({ input, baseSubject }) {
     sourceLabel: source.label,
     inferredEventType: inference.eventType,
     inferenceConfidence: inference.confidence,
-    matchedKeywords: inference.matchedKeywords
+    matchedKeywords: inference.matchedKeywords,
+    acquisitionRequestIds: acquisitionRequests.map((request) => request.id),
+    urlContentStatus: input?.urlContent?.status
   };
 
   const timelineItem = {
@@ -242,6 +215,7 @@ export function createStockInputContext({ input, baseSubject }) {
     item,
     timelineItem,
     inference,
-    source
+    source,
+    acquisitionRequests
   };
 }

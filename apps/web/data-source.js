@@ -57,6 +57,57 @@ function getSearchParams(options) {
   return new URLSearchParams();
 }
 
+function shouldFetchUrlContent(input) {
+  return Boolean(
+    input?.url &&
+      (!String(input.title ?? "").trim() || !String(input.bodyExcerpt ?? "").trim())
+  );
+}
+
+async function defaultFetchUrlContent(url) {
+  if (!globalThis.fetch || !globalThis.location?.origin) {
+    return null;
+  }
+
+  const response = await fetch(`/api/url-content?url=${encodeURIComponent(url)}`);
+  if (!response.ok) {
+    return null;
+  }
+
+  return response.json();
+}
+
+async function enrichInputFromUrlContent(input, fetchUrlContent) {
+  if (!shouldFetchUrlContent(input)) {
+    return input;
+  }
+
+  const fetcher = fetchUrlContent ?? defaultFetchUrlContent;
+  try {
+    const content = await fetcher(input.url);
+    if (!content) {
+      return input;
+    }
+
+    return {
+      ...input,
+      title: String(input.title ?? "").trim() || content.title,
+      bodyExcerpt: String(input.bodyExcerpt ?? "").trim() || content.bodyExcerpt,
+      urlContent: {
+        ...content,
+        status: "ok"
+      }
+    };
+  } catch {
+    return {
+      ...input,
+      urlContent: {
+        status: "failed"
+      }
+    };
+  }
+}
+
 async function tryLoadRegistry(id) {
   try {
     return await registryLoaders[id]();
@@ -256,7 +307,8 @@ export async function loadContextData(options = {}) {
   const baseSubject = pickSubject(registrySource, plugin);
   const informationItems = pickInformationItems(registrySource, plugin);
   const timelineItems = pickTimelineItems(registrySource, plugin);
-  const inputContext = buildInputContext(plugin, baseSubject, options.input);
+  const input = await enrichInputFromUrlContent(options.input, options.fetchUrlContent);
+  const inputContext = buildInputContext(plugin, baseSubject, input);
   const subject = inputContext?.subject ?? baseSubject;
   const item = inputContext?.item ?? informationItems[0];
   const dictionary = plugin.listDictionaryEntries();
@@ -267,6 +319,8 @@ export async function loadContextData(options = {}) {
       item
     }) ?? createFallbackCard(plugin, subject, item, dictionaryMatches);
   const timeline = inputContext ? [inputContext.timelineItem, ...timelineItems] : timelineItems;
+  const acquisitionRequests =
+    inputContext?.acquisitionRequests ?? (input ? plugin.createAcquisitionRequests?.(input) ?? [] : []);
 
   return {
     registryId: registrySource.id,
@@ -280,6 +334,7 @@ export async function loadContextData(options = {}) {
     eventMap: pickEventMap(plugin, card, timeline, dictionaryMatches),
     timeline,
     checkpoint: pickCheckpoint(plugin, card),
-    acquisitionSources: plugin.listAcquisitionSources?.() ?? []
+    acquisitionSources: plugin.listAcquisitionSources?.() ?? [],
+    acquisitionRequests
   };
 }

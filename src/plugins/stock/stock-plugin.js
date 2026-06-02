@@ -15,6 +15,7 @@ import {
   inferStockEventType,
   stockAcquisitionSources
 } from "./stock-input.js";
+import { createStockAcquisitionRequests } from "./stock-acquisition.js";
 
 function progressRate(item) {
   const total = item?.raw?.acquiredAmountTotal;
@@ -373,6 +374,10 @@ export class StockPlugin extends TemplateDrivenPluginBase {
 
   listAcquisitionSources() {
     return stockAcquisitionSources;
+  }
+
+  createAcquisitionRequests(input = {}) {
+    return createStockAcquisitionRequests(input);
   }
 }
 
