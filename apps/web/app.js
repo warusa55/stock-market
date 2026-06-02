@@ -46,6 +46,9 @@ function createDefaultState() {
     selectedActions: [],
     selectedCheckpointIds: [],
     acquisitionStatus: "",
+    acquisitionError: null,
+    acquisitionSourceLabel: "",
+    acquisitionLastUpdatedAt: "",
     acquisitionResults: [],
     finalReaction: ""
   };
@@ -100,6 +103,14 @@ function createDefaultState() {
 
   function saveState() {
     localStorage.setItem(storageKey, JSON.stringify(state));
+  }
+
+  function clearAcquisitionFeedback() {
+    state.acquisitionStatus = "";
+    state.acquisitionError = null;
+    state.acquisitionSourceLabel = "";
+    state.acquisitionLastUpdatedAt = "";
+    state.acquisitionResults = [];
   }
 
   async function refreshDataFromInput() {
@@ -294,6 +305,8 @@ function createDefaultState() {
             ${renderMatches()}
           </div>
           <div>
+            <h2>取得状態</h2>
+            ${renderAcquisitionStatus()}
             <h2>取得候補</h2>
             ${renderAcquisitionRequests()}
           </div>
@@ -337,10 +350,13 @@ function createDefaultState() {
       ...result.inputPatch
     };
     state.acquisitionStatus = result.status;
+    state.acquisitionError = result.error ?? null;
+    state.acquisitionSourceLabel = request.label ?? "";
+    state.acquisitionLastUpdatedAt = new Date().toISOString();
     state.acquisitionResults = result.acquiredItems ?? [];
     saveState();
     await refreshDataFromInput();
-    switchView(result.acquiredItems?.length > 0 ? "input" : "home");
+    switchView(result.status === "completed" || result.acquiredItems?.length > 0 ? "input" : "home");
   }
 
   function saveCurrentInputToShelf(input) {
@@ -400,6 +416,10 @@ function createDefaultState() {
       eventType: item.eventType || "",
       sourceStatus: item.sourceStatus || "available"
     };
+    state.acquisitionStatus = save ? "saved" : "applied";
+    state.acquisitionError = null;
+    state.acquisitionSourceLabel = item.provider === "yanoshin_tdnet" ? "TDnet適時開示" : item.sourceKind || "取得結果";
+    state.acquisitionLastUpdatedAt = new Date().toISOString();
 
     if (save) {
       saveCurrentInputToShelf(state.input);
@@ -496,6 +516,8 @@ function createDefaultState() {
         <aside class="panel">
           <h2>検出語句</h2>
           ${renderMatches()}
+          <h2>取得状態</h2>
+          ${renderAcquisitionStatus()}
           <h2>取得候補</h2>
           ${renderAcquisitionRequests()}
           <h2>取得結果</h2>
@@ -524,6 +546,66 @@ function createDefaultState() {
           })
           .join("")}
       </div>
+    `;
+  }
+
+  function acquisitionStatusLabel(status) {
+    return (
+      {
+        applied: "入力へ反映済み",
+        completed: "取得完了",
+        failed: "取得失敗",
+        missing: "候補なし",
+        saved: "保存済み",
+        selected: "取得元を開いた"
+      }[status] ?? status
+    );
+  }
+
+  function acquisitionStatusClass(status) {
+    if (status === "completed" || status === "applied" || status === "saved") {
+      return " ok";
+    }
+    if (status === "failed") {
+      return " error";
+    }
+    if (status === "missing") {
+      return " warn";
+    }
+    return "";
+  }
+
+  function renderAcquisitionStatus() {
+    if (!state.acquisitionStatus) {
+      return `<p class="subtitle">候補の「取得」を押すと、結果と理由がここに出ます。</p>`;
+    }
+
+    const error = state.acquisitionError;
+    const updatedAt = state.acquisitionLastUpdatedAt
+      ? new Date(state.acquisitionLastUpdatedAt).toLocaleString("ja-JP")
+      : "";
+    const message =
+      error?.message ??
+      (state.acquisitionStatus === "selected"
+        ? "外部ページを開きました。必要な情報を確認して、入力欄へ反映してください。"
+        : "取得結果を入力欄へ反映できます。");
+    const meta = [
+      state.acquisitionSourceLabel,
+      updatedAt,
+      error?.code ? `code:${error.code}` : "",
+      error?.status ? `status:${error.status}` : ""
+    ]
+      .filter(Boolean)
+      .join(" / ");
+
+    return `
+      <article class="acquisition-status${acquisitionStatusClass(state.acquisitionStatus)}">
+        <div>
+          <span class="tag">${escapeHtml(acquisitionStatusLabel(state.acquisitionStatus))}</span>
+        </div>
+        <p>${escapeHtml(message)}</p>
+        ${meta ? `<p class="muted">${escapeHtml(meta)}</p>` : ""}
+      </article>
     `;
   }
 
@@ -577,8 +659,8 @@ function createDefaultState() {
                 <p>${escapeHtml(item.bodyExcerpt || "本文メモなし")}</p>
                 <p class="muted">${escapeHtml([item.companyName, item.url ? "URLあり" : "URLなし", item.eventType].filter(Boolean).join(" / "))}</p>
                 <div class="action-row">
-                  <button class="tool-button" type="button" data-acquired-index="${index}">入力へ反映</button>
-                  <button class="tool-button active" type="button" data-acquired-save="${index}">保存</button>
+                  <button class="tool-button" type="button" data-acquired-index="${index}">入力欄に入れる</button>
+                  <button class="tool-button active" type="button" data-acquired-save="${index}">この材料を保存</button>
                 </div>
               </article>
             `;
@@ -939,6 +1021,7 @@ function createDefaultState() {
     const clearInput = event.target.closest("[data-clear-input]");
     if (clearInput) {
       state.input = { ...defaultInput };
+      clearAcquisitionFeedback();
       saveState();
       refreshDataFromInput();
     }
@@ -955,8 +1038,17 @@ function createDefaultState() {
     const intent = event.submitter?.value ?? "apply";
     state.input = Object.fromEntries(formData.entries());
 
+    if (intent === "apply") {
+      clearAcquisitionFeedback();
+    }
+
     if (intent === "save" || intent === "save-home") {
       saveCurrentInputToShelf(state.input);
+      state.acquisitionStatus = "saved";
+      state.acquisitionError = null;
+      state.acquisitionSourceLabel = "入力内容";
+      state.acquisitionLastUpdatedAt = new Date().toISOString();
+      state.acquisitionResults = [];
     }
 
     saveState();

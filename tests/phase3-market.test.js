@@ -186,6 +186,35 @@ test("market web data source executes URL acquisition into input patch", async (
   assert.equal(result.inputPatch.title, "自己株式の取得状況に関するお知らせ");
 });
 
+test("market web data source surfaces URL acquisition failures", async () => {
+  const initialData = await loadContextData({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "186A",
+      url: "http://127.0.0.1/private"
+    }
+  });
+  const request = initialData.acquisitionRequests.find((item) => item.label === "URL本文取得");
+  const result = await executeAcquisitionRequest({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "186A",
+      url: "http://127.0.0.1/private"
+    },
+    request,
+    fetchUrlContent: async () => ({
+      error: {
+        code: "blocked_url",
+        message: "このURLは取得対象外です。"
+      }
+    })
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error.code, "blocked_url");
+  assert.equal(result.inputPatch.url, "http://127.0.0.1/private");
+});
+
 test("market web data source executes TDnet acquisition into input patch", async () => {
   const initialData = await loadContextData({
     search: "?domain=stock",
@@ -225,4 +254,60 @@ test("market web data source executes TDnet acquisition into input patch", async
   assert.equal(result.inputPatch.title, "自己株式の取得状況に関するお知らせ");
   assert.equal(result.inputPatch.url, "https://example.test/tdnet.pdf");
   assert.equal(result.inputPatch.eventType, "self_share_buyback_status");
+});
+
+test("market web data source reports empty TDnet acquisitions", async () => {
+  const initialData = await loadContextData({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "186A",
+      subjectName: "サンプル新興株"
+    }
+  });
+  const request = initialData.acquisitionRequests.find((item) => item.query.provider === "yanoshin_tdnet");
+  const result = await executeAcquisitionRequest({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "186A",
+      subjectName: "サンプル新興株"
+    },
+    request,
+    fetchStockDisclosures: async () => ({
+      items: []
+    })
+  });
+
+  assert.equal(result.status, "missing");
+  assert.equal(result.error.code, "no_items");
+  assert.equal(result.inputPatch.sourceKind, "official_disclosure");
+});
+
+test("market web data source surfaces TDnet acquisition failures", async () => {
+  const initialData = await loadContextData({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "186A",
+      subjectName: "サンプル新興株"
+    }
+  });
+  const request = initialData.acquisitionRequests.find((item) => item.query.provider === "yanoshin_tdnet");
+  const result = await executeAcquisitionRequest({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "186A",
+      subjectName: "サンプル新興株"
+    },
+    request,
+    fetchStockDisclosures: async () => ({
+      error: {
+        code: "tdnet_fetch_failed",
+        status: 502
+      }
+    })
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error.code, "tdnet_fetch_failed");
+  assert.equal(result.error.status, 502);
+  assert.deepEqual(result.acquiredItems, []);
 });

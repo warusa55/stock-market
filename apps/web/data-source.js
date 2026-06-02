@@ -47,6 +47,53 @@ const exportPrefixByDomain = {
   stock: "stock"
 };
 
+const acquisitionErrorMessages = {
+  blocked_url: "このURLは取得対象外です。",
+  fetch_failed: "URL本文を取得できませんでした。",
+  invalid_ticker: "銘柄コードが不正です。",
+  invalid_url: "URLが不正です。",
+  no_content: "取得できる本文がありませんでした。",
+  no_items: "該当するTDnet開示候補がありません。",
+  tdnet_fetch_failed: "TDnet候補を取得できませんでした。",
+  url_fetch_failed: "URL本文を取得できませんでした。"
+};
+
+function createAcquisitionError(error, details = {}) {
+  const raw = typeof error === "object" && error ? error : {};
+  const code = raw.code ?? raw.error ?? (typeof error === "string" ? error : "fetch_failed");
+
+  return {
+    ...details,
+    ...raw,
+    code,
+    message: raw.message ?? details.message ?? acquisitionErrorMessages[code] ?? "取得に失敗しました。"
+  };
+}
+
+async function readResponseError(response, fallbackCode) {
+  let payload = {};
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
+
+  return createAcquisitionError(payload.error ?? fallbackCode, {
+    status: payload.status ?? response.status
+  });
+}
+
+function getAcquisitionResultError(result) {
+  if (!result?.error) {
+    return null;
+  }
+
+  return createAcquisitionError(result.error, {
+    status: result.status
+  });
+}
+
 function getSearchParams(options) {
   if (options.search) {
     return new URLSearchParams(options.search);
@@ -71,7 +118,9 @@ async function defaultFetchUrlContent(url) {
 
   const response = await fetch(`/api/url-content?url=${encodeURIComponent(url)}`);
   if (!response.ok) {
-    return null;
+    return {
+      error: await readResponseError(response, "url_fetch_failed")
+    };
   }
 
   return response.json();
@@ -86,7 +135,9 @@ async function defaultFetchStockDisclosures(request) {
     `/api/stock/tdnet?ticker=${encodeURIComponent(request.query.tickerCode)}&limit=10`
   );
   if (!response.ok) {
-    return null;
+    return {
+      error: await readResponseError(response, "tdnet_fetch_failed")
+    };
   }
 
   return response.json();
@@ -102,6 +153,17 @@ async function enrichInputFromUrlContent(input, fetchUrlContent) {
     const content = await fetcher(input.url);
     if (!content) {
       return input;
+    }
+    const error = getAcquisitionResultError(content);
+    if (error) {
+      return {
+        ...input,
+        urlContent: {
+          status: "failed",
+          error: error.code,
+          message: error.message
+        }
+      };
     }
 
     return {
@@ -408,22 +470,38 @@ export async function executeAcquisitionRequest(options = {}) {
   let content = null;
   let acquiredItems = [];
   let status = "selected";
+  let error = null;
 
   if (isUrlContentRequest(request)) {
     try {
-      content = await fetcher(request.query.url);
+      const result = await fetcher(request.query.url);
+      error = getAcquisitionResultError(result);
+      content = error ? null : result;
       status = content ? "completed" : "failed";
-    } catch {
+      if (!content && !error) {
+        error = createAcquisitionError("no_content");
+      }
+    } catch (caughtError) {
       status = "failed";
+      error = createAcquisitionError("url_fetch_failed", {
+        detail: caughtError?.message
+      });
     }
   } else if (isTdnetRequest(request)) {
     try {
       const result = await stockDisclosureFetcher(request);
-      acquiredItems = result?.items ?? [];
+      error = getAcquisitionResultError(result);
+      acquiredItems = error ? [] : result?.items ?? [];
       content = acquiredItems[0] ?? null;
-      status = content ? "completed" : "missing";
-    } catch {
+      status = error ? "failed" : content ? "completed" : "missing";
+      if (!content && !error) {
+        error = createAcquisitionError("no_items");
+      }
+    } catch (caughtError) {
       status = "failed";
+      error = createAcquisitionError("tdnet_fetch_failed", {
+        detail: caughtError?.message
+      });
     }
   }
 
@@ -433,6 +511,7 @@ export async function executeAcquisitionRequest(options = {}) {
 
   return {
     status,
+    error,
     inputPatch,
     acquiredItems,
     externalUrl: isUrlContentRequest(request) ? "" : request?.query?.externalUrl ?? ""
