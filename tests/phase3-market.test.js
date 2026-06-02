@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { TemplateDrivenPluginBase } from "../src/core/template-driven-plugin.js";
 import { createMarketRegistry } from "../src/plugins/market/index.js";
+import { loadContextData } from "../apps/web/data-source.js";
 import { createFundPlugin } from "../src/plugins/fund/fund-plugin.js";
 import { fundInformationItems, fundSubject } from "../src/plugins/fund/fund-data.js";
 import { createStockPlugin } from "../src/plugins/stock/stock-plugin.js";
@@ -89,4 +90,25 @@ test("market registry registers stock and fund plugins together", () => {
   assert.deepEqual(ids, ["stock", "fund"]);
   assert.equal(registry.require("stock").name, "Stock Plugin");
   assert.equal(registry.require("fund").name, "Fund Plugin");
+});
+
+test("market web data source creates stock cards from manual input and dictionary hits", async () => {
+  const data = await loadContextData({
+    search: "?domain=stock",
+    input: {
+      subjectName: "サンプル電機",
+      sourceType: "official",
+      title: "自己株式の取得状況に関するお知らせ",
+      bodyExcerpt: "自社株買いの途中経過を確認する。",
+      tags: "self-share-buyback,status",
+      eventType: "self_share_buyback_status"
+    }
+  });
+
+  assert.equal(data.registryId, "market");
+  assert.equal(data.domainId, "stock");
+  assert.equal(data.card.id, "card-stock-buyback-status");
+  assert.ok(data.dictionaryMatches.some((match) => match.entry.id === "stock-term-self-share-buyback"));
+  assert.ok(data.dictionaryMatches.some((match) => match.entry.id === "stock-term-self-share-buyback-status"));
+  assert.equal(data.eventMap.id, "stock-event-self-share-buyback");
 });
