@@ -256,6 +256,7 @@ export interface ReflectionContext {
   periodStart: string;
   periodEnd: string;
   targetUserId?: string;
+  now?: () => string;
 }
 
 export interface DomainPluginDefinition {
@@ -291,6 +292,65 @@ export declare class DomainPluginBase {
   score(input: ScoringInput): ScoringResult | null;
   reflect(context: ReflectionContext): ReflectionReport | null;
   toJSON(): Required<DomainPluginDefinition>;
+}
+
+export interface OneCardTemplate {
+  id: string;
+  title: string;
+  subtitle?: string;
+  shortExplanation: string;
+  focusPoints: string[];
+  todayTakeaway: string;
+  relatedTermIds?: string[];
+  relatedEventMapIds?: string[];
+  nextActions?: NextAction[];
+  difficulty?: Difficulty;
+}
+
+export interface TemplateDrivenPluginDefinition extends DomainPluginDefinition {
+  informationItems?: InformationItem[];
+  timelineItems?: TimelineItem[];
+  checkpoints?: Checkpoint[];
+  cardTemplates?: Record<string, OneCardTemplate>;
+  defaultCardKind?: string;
+  detectCardKind?: (
+    item: InformationItem | undefined,
+    context: { subject?: Subject; plugin: TemplateDrivenPluginBase }
+  ) => string;
+}
+
+export declare function itemSearchText(item?: InformationItem): string;
+
+export declare function createOneCardFromTemplate(params: {
+  domainId: DomainId;
+  template: OneCardTemplate | null;
+  subject?: Subject;
+  item?: InformationItem;
+  now: string;
+  overrides?: Partial<OneCard>;
+}): OneCard | null;
+
+export declare class TemplateDrivenPluginBase extends DomainPluginBase {
+  informationItems: readonly InformationItem[];
+  timelineItems: readonly TimelineItem[];
+  checkpoints: readonly Checkpoint[];
+  cardTemplates: Readonly<Record<string, OneCardTemplate>>;
+  defaultCardKind: string;
+
+  constructor(definition: TemplateDrivenPluginDefinition);
+  listInformationItems(): readonly InformationItem[];
+  listTimelineItems(): readonly TimelineItem[];
+  listCheckpoints(): readonly Checkpoint[];
+  listCardTemplates(): Readonly<Record<string, OneCardTemplate>>;
+  getItemSearchText(item?: InformationItem): string;
+  resolveCardTemplate(kind: string): OneCardTemplate | null;
+  createCardFromTemplate(params: {
+    template: OneCardTemplate;
+    subject?: Subject;
+    item?: InformationItem;
+    now: string;
+    kind?: string;
+  }): OneCard | null;
 }
 
 export declare class PluginRegistry {
