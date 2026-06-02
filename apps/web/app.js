@@ -1,4 +1,4 @@
-import { loadContextData } from "./data-source.js";
+import { executeAcquisitionRequest, loadContextData } from "./data-source.js";
 
 const defaultInput = {
   subjectName: "",
@@ -37,6 +37,7 @@ const defaultInput = {
         openedEventMapIds: [],
         selectedActions: [],
         selectedCheckpointIds: [],
+        acquisitionStatus: "",
         finalReaction: "",
         ...(JSON.parse(localStorage.getItem(storageKey)) ?? {})
       };
@@ -47,6 +48,7 @@ const defaultInput = {
         openedEventMapIds: [],
         selectedActions: [],
         selectedCheckpointIds: [],
+        acquisitionStatus: "",
         finalReaction: ""
       };
     }
@@ -148,6 +150,42 @@ const defaultInput = {
 
   function inputValue(name) {
     return escapeHtml(state.input?.[name] ?? "");
+  }
+
+  function isUrlAcquisitionRequest(request) {
+    return request?.id?.includes("-url-");
+  }
+
+  function acquisitionButtonLabel(request) {
+    if (request.status === "needs_target") {
+      return "対象なし";
+    }
+    return isUrlAcquisitionRequest(request) ? "取得" : "開く";
+  }
+
+  async function runAcquisitionRequest(request) {
+    if (!request || request.status === "needs_target") {
+      return;
+    }
+
+    if (request.query?.externalUrl && !isUrlAcquisitionRequest(request)) {
+      window.open(request.query.externalUrl, "_blank", "noopener");
+    }
+
+    const result = await executeAcquisitionRequest({
+      search: globalThis.location?.search ?? "",
+      input: state.input,
+      request
+    });
+
+    state.input = {
+      ...state.input,
+      ...result.inputPatch
+    };
+    state.acquisitionStatus = result.status;
+    saveState();
+    await refreshDataFromInput();
+    switchView("home");
   }
 
   function renderInput() {
@@ -282,6 +320,9 @@ const defaultInput = {
                 </div>
                 <p>${escapeHtml(request.summary)}</p>
                 ${keywords.length > 0 ? `<p class="muted">${escapeHtml(keywords.join(", "))}</p>` : ""}
+                <div class="action-row">
+                  <button class="tool-button" type="button" data-acquire="${escapeHtml(request.id)}"${request.status === "needs_target" ? " disabled" : ""}>${escapeHtml(acquisitionButtonLabel(request))}</button>
+                </div>
               </article>
             `;
           })
@@ -437,10 +478,17 @@ const defaultInput = {
     renderReflection();
   }
 
-  document.addEventListener("click", (event) => {
+  document.addEventListener("click", async (event) => {
     const navItem = event.target.closest("[data-view]");
     if (navItem) {
       switchView(navItem.dataset.view);
+      return;
+    }
+
+    const acquire = event.target.closest("[data-acquire]");
+    if (acquire) {
+      const request = (data.acquisitionRequests ?? []).find((item) => item.id === acquire.dataset.acquire);
+      await runAcquisitionRequest(request);
       return;
     }
 

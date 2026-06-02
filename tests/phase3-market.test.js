@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { TemplateDrivenPluginBase } from "../src/core/template-driven-plugin.js";
 import { createMarketRegistry } from "../src/plugins/market/index.js";
-import { loadContextData } from "../apps/web/data-source.js";
+import { executeAcquisitionRequest, loadContextData } from "../apps/web/data-source.js";
 import { createFundPlugin } from "../src/plugins/fund/fund-plugin.js";
 import { fundInformationItems, fundSubject } from "../src/plugins/fund/fund-data.js";
 import { createStockPlugin } from "../src/plugins/stock/stock-plugin.js";
@@ -156,4 +156,32 @@ test("market web data source enriches stock input from URL content", async () =>
   assert.equal(data.item.raw.sourceKind, "official_disclosure");
   assert.equal(data.item.raw.urlContentStatus, "ok");
   assert.ok(data.acquisitionRequests.some((request) => request.label === "URL本文取得"));
+});
+
+test("market web data source executes URL acquisition into input patch", async () => {
+  const initialData = await loadContextData({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "186A",
+      url: "https://www.release.tdnet.info/inbs/example.html"
+    }
+  });
+  const request = initialData.acquisitionRequests.find((item) => item.label === "URL本文取得");
+  const result = await executeAcquisitionRequest({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "186A",
+      url: "https://www.release.tdnet.info/inbs/example.html"
+    },
+    request,
+    fetchUrlContent: async () => ({
+      title: "自己株式の取得状況に関するお知らせ",
+      bodyExcerpt: "自社株買いの途中経過を確認する。"
+    })
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.inputPatch.subjectCode, "186A");
+  assert.equal(result.inputPatch.sourceKind, "official_disclosure");
+  assert.equal(result.inputPatch.title, "自己株式の取得状況に関するお知らせ");
 });

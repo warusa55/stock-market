@@ -60,6 +60,13 @@ const requestDefinitions = {
   }
 };
 
+const externalSourceUrls = {
+  official_disclosure: "https://www.release.tdnet.info/inbs/I_main_00.html",
+  edinet: "https://disclosure2.edinet-fsa.go.jp/",
+  company_ir: "https://www.google.com/search",
+  news: "https://www.google.com/search"
+};
+
 function normalizeText(value) {
   return String(value ?? "").toLowerCase();
 }
@@ -70,6 +77,44 @@ function parseUrl(value) {
   } catch {
     return null;
   }
+}
+
+function mergeTags(...groups) {
+  return [
+    ...new Set(
+      groups
+        .flatMap((group) => (Array.isArray(group) ? group : String(group ?? "").split(",")))
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    )
+  ].join(",");
+}
+
+function buildSearchUrl(baseUrl, terms) {
+  const filteredTerms = terms.filter(Boolean);
+  if (filteredTerms.length === 0) {
+    return baseUrl;
+  }
+
+  const url = new URL(baseUrl);
+  url.searchParams.set("q", filteredTerms.join(" "));
+  return url.href;
+}
+
+function createExternalUrl(sourceKind, { tickerCode, subjectName }) {
+  const baseUrl = externalSourceUrls[sourceKind];
+  if (!baseUrl) {
+    return "";
+  }
+
+  if (sourceKind === "company_ir") {
+    return buildSearchUrl(baseUrl, [tickerCode, subjectName, "IR"]);
+  }
+  if (sourceKind === "news") {
+    return buildSearchUrl(baseUrl, [tickerCode, subjectName, "株", "ニュース"]);
+  }
+
+  return baseUrl;
 }
 
 export function extractTickerCode(value) {
@@ -140,6 +185,7 @@ function createRequest({ sourceKind, tickerCode, subjectName, url }) {
       tickerCode,
       subjectName,
       url,
+      externalUrl: createExternalUrl(source.id, { tickerCode, subjectName }),
       keywords: definition.keywords
     }
   };
@@ -163,6 +209,7 @@ function createUrlRequest({ tickerCode, subjectName, url, sourceKind }) {
       tickerCode,
       subjectName,
       url,
+      externalUrl: url,
       keywords: ["title", "bodyExcerpt"]
     }
   };
@@ -196,4 +243,29 @@ export function createStockAcquisitionRequests(input = {}) {
     .filter(Boolean);
 
   return [urlRequest, ...sourceRequests].filter(Boolean);
+}
+
+export function createStockAcquisitionInputPatch(request, { content, currentInput = {} } = {}) {
+  const keywords = request?.query?.keywords ?? [];
+  const tickerCode = request?.query?.tickerCode ?? currentInput.subjectCode ?? "";
+  const sourceKind = request?.sourceKind ?? currentInput.sourceKind ?? "";
+  const patch = {
+    subjectCode: tickerCode,
+    subjectName: currentInput.subjectName || request?.query?.subjectName || "",
+    sourceType: request?.sourceType ?? currentInput.sourceType ?? "manual",
+    sourceKind,
+    url: request?.query?.url || currentInput.url || "",
+    tags: mergeTags(currentInput.tags, sourceKind, tickerCode ? `ticker:${tickerCode}` : "", keywords)
+  };
+
+  if (content) {
+    patch.title = currentInput.title || content.title || "";
+    patch.bodyExcerpt = currentInput.bodyExcerpt || content.bodyExcerpt || "";
+    patch.urlContent = {
+      ...content,
+      status: "ok"
+    };
+  }
+
+  return patch;
 }

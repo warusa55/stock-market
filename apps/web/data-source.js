@@ -108,6 +108,45 @@ async function enrichInputFromUrlContent(input, fetchUrlContent) {
   }
 }
 
+function isUrlContentRequest(request) {
+  return Boolean(request?.id?.includes("-url-") && request?.query?.url);
+}
+
+function mergeTags(...groups) {
+  return [
+    ...new Set(
+      groups
+        .flatMap((group) => (Array.isArray(group) ? group : String(group ?? "").split(",")))
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    )
+  ].join(",");
+}
+
+function createGenericAcquisitionInputPatch(request, { content, currentInput = {} } = {}) {
+  const keywords = request?.query?.keywords ?? [];
+  const tickerCode = request?.query?.tickerCode ?? currentInput.subjectCode ?? "";
+  const patch = {
+    subjectCode: tickerCode,
+    subjectName: currentInput.subjectName || request?.query?.subjectName || "",
+    sourceType: request?.sourceType ?? currentInput.sourceType ?? "manual",
+    sourceKind: request?.sourceKind ?? currentInput.sourceKind ?? "",
+    url: request?.query?.url || currentInput.url || "",
+    tags: mergeTags(currentInput.tags, request?.sourceKind, tickerCode ? `ticker:${tickerCode}` : "", keywords)
+  };
+
+  if (content) {
+    patch.title = currentInput.title || content.title || "";
+    patch.bodyExcerpt = currentInput.bodyExcerpt || content.bodyExcerpt || "";
+    patch.urlContent = {
+      ...content,
+      status: "ok"
+    };
+  }
+
+  return patch;
+}
+
 async function tryLoadRegistry(id) {
   try {
     return await registryLoaders[id]();
@@ -336,5 +375,35 @@ export async function loadContextData(options = {}) {
     checkpoint: pickCheckpoint(plugin, card),
     acquisitionSources: plugin.listAcquisitionSources?.() ?? [],
     acquisitionRequests
+  };
+}
+
+export async function executeAcquisitionRequest(options = {}) {
+  const params = getSearchParams(options);
+  const registrySource = await loadRequestedRegistry(params.get("registry"));
+  const plugin = pickDomain(registrySource, params.get("domain"));
+  const request = options.request;
+  const currentInput = options.input ?? {};
+  const fetcher = options.fetchUrlContent ?? defaultFetchUrlContent;
+  let content = null;
+  let status = "selected";
+
+  if (isUrlContentRequest(request)) {
+    try {
+      content = await fetcher(request.query.url);
+      status = content ? "completed" : "failed";
+    } catch {
+      status = "failed";
+    }
+  }
+
+  const inputPatch =
+    plugin.createAcquisitionInputPatch?.({ request, currentInput, content }) ??
+    createGenericAcquisitionInputPatch(request, { currentInput, content });
+
+  return {
+    status,
+    inputPatch,
+    externalUrl: isUrlContentRequest(request) ? "" : request?.query?.externalUrl ?? ""
   };
 }
