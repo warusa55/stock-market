@@ -204,6 +204,11 @@ function buildInputContext(plugin, baseSubject, input) {
     return null;
   }
 
+  const pluginInputContext = plugin.createInputContext?.({ input, baseSubject });
+  if (pluginInputContext) {
+    return pluginInputContext;
+  }
+
   const subject = createSubjectFromInput({
     id: `subject-input-${plugin.id}`,
     domainId: plugin.id,
@@ -274,6 +279,7 @@ export async function loadContextData(options = {}) {
     dictionaryMatches,
     eventMap: pickEventMap(plugin, card, timeline, dictionaryMatches),
     timeline,
-    checkpoint: pickCheckpoint(plugin, card)
+    checkpoint: pickCheckpoint(plugin, card),
+    acquisitionSources: plugin.listAcquisitionSources?.() ?? []
   };
 }

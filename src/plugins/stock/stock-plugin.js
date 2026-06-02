@@ -10,6 +10,11 @@ import {
   stockInformationItems,
   stockTimelineItems
 } from "./stock-data.js";
+import {
+  createStockInputContext,
+  inferStockEventType,
+  stockAcquisitionSources
+} from "./stock-input.js";
 
 function progressRate(item) {
   const total = item?.raw?.acquiredAmountTotal;
@@ -21,21 +26,17 @@ function progressRate(item) {
 }
 
 function detectStockKind(item, { plugin }) {
-  const eventType = item?.raw?.eventType;
-  if (eventType === "self_share_buyback_status") {
-    return "buyback-status";
-  }
-  if (eventType === "self_share_buyback_end") {
-    return "buyback-end";
-  }
-  if (eventType === "downward_revision") {
-    return "downward-revision";
-  }
-  if (eventType === "upward_revision") {
-    return "upward-revision";
-  }
-  if (eventType === "tob_start") {
-    return "tob";
+  const inference = inferStockEventType({
+    eventType: item?.raw?.eventType || item?.raw?.inferredEventType,
+    title: item?.title,
+    bodyExcerpt: item?.bodyExcerpt,
+    tags: item?.tags,
+    sourceKind: item?.raw?.sourceKind,
+    subjectCode: item?.raw?.tickerCode
+  });
+
+  if (inference.cardKind !== "general") {
+    return inference.cardKind;
   }
 
   const text = plugin.getItemSearchText(item);
@@ -61,11 +62,39 @@ function detectStockKind(item, { plugin }) {
   if (text.includes("tob") || text.includes("TOB") || text.includes("公開買付")) {
     return "tob";
   }
+  if (text.includes("大量保有報告書") || text.includes("保有割合")) {
+    return "large-shareholding";
+  }
 
   return "general";
 }
 
 const cardTemplates = {
+  buyback: {
+    id: "card-stock-buyback",
+    title: "今日の1枚: 自己株式取得の決定",
+    subtitle: "取得枠、期間、方法を見る",
+    shortExplanation: "会社が自己株式を取得する方針や上限を決めた発表です。",
+    focusPoints: ["取得上限はいくらか", "取得期間はいつまでか", "取得方法は何か"],
+    todayTakeaway: "自社株買いは決定時点で、枠・期間・上限をまず見る。",
+    relatedTermIds: ["stock-term-self-share-buyback"],
+    relatedEventMapIds: ["stock-event-self-share-buyback"],
+    nextActions: [
+      {
+        id: "stock-open-buyback",
+        label: "自社株買いを見る",
+        type: "open_dictionary",
+        targetId: "stock-term-self-share-buyback"
+      },
+      {
+        id: "stock-open-buyback-map-from-decision",
+        label: "流れを見る",
+        type: "open_event_map",
+        targetId: "stock-event-self-share-buyback"
+      }
+    ],
+    difficulty: "easy"
+  },
   "buyback-status": {
     id: "card-stock-buyback-status",
     title: "今日の1枚: 自己株式の取得状況",
@@ -96,6 +125,31 @@ const cardTemplates = {
     ],
     difficulty: "easy"
   },
+  "buyback-end": {
+    id: "card-stock-buyback-end",
+    title: "今日の1枚: 自己株式の取得終了",
+    subtitle: "買い切ったか、期間終了かを見る",
+    shortExplanation: "予定していた自己株式取得が終わったことを示す発表です。",
+    focusPoints: ["上限まで買ったか", "残枠はあるか", "消却予定があるか"],
+    todayTakeaway: "取得終了は買付支えの一区切り。消却の有無まで見る。",
+    relatedTermIds: ["stock-term-self-share-buyback-end", "stock-term-self-share-buyback"],
+    relatedEventMapIds: ["stock-event-self-share-buyback"],
+    nextActions: [
+      {
+        id: "stock-open-buyback-end",
+        label: "取得終了を見る",
+        type: "open_dictionary",
+        targetId: "stock-term-self-share-buyback-end"
+      },
+      {
+        id: "stock-open-buyback-end-map",
+        label: "今ここを見る",
+        type: "open_event_map",
+        targetId: "stock-event-self-share-buyback"
+      }
+    ],
+    difficulty: "easy"
+  },
   "downward-revision": {
     id: "card-stock-downward-revision",
     title: "今日の1枚: 業績予想の下方修正",
@@ -114,6 +168,31 @@ const cardTemplates = {
       },
       {
         id: "stock-open-earnings-map",
+        label: "修正の流れを見る",
+        type: "open_event_map",
+        targetId: "stock-event-earnings-revision"
+      }
+    ],
+    difficulty: "normal"
+  },
+  "earnings-digest": {
+    id: "card-stock-earnings-digest",
+    title: "今日の1枚: 決算短信",
+    subtitle: "売上、利益、通期予想を見る",
+    shortExplanation: "上場会社が決算内容を速報的に開示する資料です。",
+    focusPoints: ["売上は増えたか", "利益は増えたか", "通期予想は変わったか"],
+    todayTakeaway: "決算短信は数字単体ではなく、予想修正の有無まで合わせて読む。",
+    relatedTermIds: ["stock-term-earnings-digest"],
+    relatedEventMapIds: ["stock-event-earnings-revision"],
+    nextActions: [
+      {
+        id: "stock-open-earnings-digest",
+        label: "決算短信を見る",
+        type: "open_dictionary",
+        targetId: "stock-term-earnings-digest"
+      },
+      {
+        id: "stock-open-earnings-digest-map",
         label: "修正の流れを見る",
         type: "open_event_map",
         targetId: "stock-event-earnings-revision"
@@ -196,6 +275,25 @@ const cardTemplates = {
     ],
     difficulty: "normal"
   },
+  "large-shareholding": {
+    id: "card-stock-large-shareholding",
+    title: "今日の1枚: 大量保有報告書",
+    subtitle: "誰が、何％、何目的で保有したかを見る",
+    shortExplanation: "一定割合以上の株式を保有した投資家が提出する報告書です。",
+    focusPoints: ["提出者は誰か", "保有割合はいくらか", "保有目的は何か"],
+    todayTakeaway: "大量保有報告書は、株主の変化と意図を見る入口になる。",
+    relatedTermIds: ["stock-term-large-shareholding-report"],
+    relatedEventMapIds: [],
+    nextActions: [
+      {
+        id: "stock-open-large-shareholding",
+        label: "大量保有を見る",
+        type: "open_dictionary",
+        targetId: "stock-term-large-shareholding-report"
+      }
+    ],
+    difficulty: "normal"
+  },
   general: {
     id: "card-stock-general",
     title: "今日の1枚: 個別株の開示",
@@ -263,6 +361,18 @@ export class StockPlugin extends TemplateDrivenPluginBase {
       now,
       overrides: focusPoints ? { focusPoints } : {}
     });
+  }
+
+  createInputContext({ input, baseSubject } = {}) {
+    return createStockInputContext({ input, baseSubject });
+  }
+
+  inferEventType(input = {}) {
+    return inferStockEventType(input);
+  }
+
+  listAcquisitionSources() {
+    return stockAcquisitionSources;
   }
 }
 

@@ -14,6 +14,8 @@ test("stock plugin derives from TemplateDrivenPluginBase and exposes stock dicti
   assert.ok(plugin instanceof TemplateDrivenPluginBase);
   assert.equal(plugin.id, "stock");
   assert.equal(plugin.findDictionaryEntry("自社株買い").id, "stock-term-self-share-buyback");
+  assert.equal(plugin.findDictionaryEntry("決算発表").id, "stock-term-earnings-digest");
+  assert.equal(plugin.findDictionaryEntry("適時開示").id, "stock-term-timely-disclosure");
   assert.equal(plugin.findEventMap("stock-event-self-share-buyback").nodes.length, 4);
 });
 
@@ -97,18 +99,41 @@ test("market web data source creates stock cards from manual input and dictionar
     search: "?domain=stock",
     input: {
       subjectName: "サンプル電機",
-      sourceType: "official",
+      subjectCode: "7203",
+      sourceKind: "official_disclosure",
       title: "自己株式の取得状況に関するお知らせ",
       bodyExcerpt: "自社株買いの途中経過を確認する。",
-      tags: "self-share-buyback,status",
-      eventType: "self_share_buyback_status"
+      tags: "self-share-buyback,status"
     }
   });
 
   assert.equal(data.registryId, "market");
   assert.equal(data.domainId, "stock");
   assert.equal(data.card.id, "card-stock-buyback-status");
+  assert.equal(data.item.sourceType, "official");
+  assert.equal(data.item.raw.tickerCode, "7203");
+  assert.equal(data.item.raw.inferredEventType, "self_share_buyback_status");
   assert.ok(data.dictionaryMatches.some((match) => match.entry.id === "stock-term-self-share-buyback"));
   assert.ok(data.dictionaryMatches.some((match) => match.entry.id === "stock-term-self-share-buyback-status"));
   assert.equal(data.eventMap.id, "stock-event-self-share-buyback");
+});
+
+test("market web data source infers stock revision events from input text", async () => {
+  const data = await loadContextData({
+    search: "?domain=stock",
+    input: {
+      subjectName: "サンプル電機",
+      subjectCode: "7203",
+      sourceKind: "official_disclosure",
+      title: "通期業績予想の修正に関するお知らせ",
+      bodyExcerpt: "需要減速により営業利益の見通しを下方修正する。",
+      tags: "earnings-forecast"
+    }
+  });
+
+  assert.equal(data.card.id, "card-stock-downward-revision");
+  assert.equal(data.item.raw.inferredEventType, "downward_revision");
+  assert.ok(data.dictionaryMatches.some((match) => match.entry.id === "stock-term-downward-revision"));
+  assert.equal(data.eventMap.id, "stock-event-earnings-revision");
+  assert.equal(data.timeline[0].relatedEventMapIds[0], "stock-event-earnings-revision");
 });

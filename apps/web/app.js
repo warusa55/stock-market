@@ -2,9 +2,11 @@ import { loadContextData } from "./data-source.js";
 
 const defaultInput = {
   subjectName: "",
+  subjectCode: "",
   subjectType: "",
   subjectMemo: "",
   sourceType: "manual",
+  sourceKind: "",
   title: "",
   bodyExcerpt: "",
   url: "",
@@ -149,6 +151,17 @@ const defaultInput = {
   }
 
   function renderInput() {
+    const acquisitionSources =
+      data.acquisitionSources?.length > 0
+        ? data.acquisitionSources
+        : [
+            { id: "memo", label: "手動メモ" },
+            { id: "official_disclosure", label: "適時開示" },
+            { id: "company_ir", label: "会社IR" },
+            { id: "edinet", label: "EDINET" },
+            { id: "news", label: "ニュース" }
+          ];
+
     document.getElementById("input").innerHTML = `
       <div class="layout-grid">
         <form class="panel input-form" id="context-input-form">
@@ -156,6 +169,10 @@ const defaultInput = {
           <label>
             <span>名前</span>
             <input name="subjectName" value="${inputValue("subjectName")}" autocomplete="off">
+          </label>
+          <label>
+            <span>コード/ID</span>
+            <input name="subjectCode" value="${inputValue("subjectCode")}" autocomplete="off">
           </label>
           <label>
             <span>種別</span>
@@ -173,6 +190,18 @@ const defaultInput = {
                 .map((value) => {
                   const selected = state.input.sourceType === value ? " selected" : "";
                   return `<option value="${value}"${selected}>${value}</option>`;
+                })
+                .join("")}
+            </select>
+          </label>
+          <label>
+            <span>取得元</span>
+            <select name="sourceKind">
+              <option value=""${state.input.sourceKind ? "" : " selected"}>未指定</option>
+              ${acquisitionSources
+                .map((source) => {
+                  const selected = state.input.sourceKind === source.id ? " selected" : "";
+                  return `<option value="${escapeHtml(source.id)}"${selected}>${escapeHtml(source.label)}</option>`;
                 })
                 .join("")}
             </select>
