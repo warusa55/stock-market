@@ -26,7 +26,32 @@ test("createStockAcquisitionRequests creates ticker based source candidates", ()
     ["official_disclosure", "company_ir", "edinet", "news"]
   );
   assert.ok(requests.every((request) => request.query.tickerCode === "7203"));
-  assert.equal(requests[0].query.externalUrl, "https://www.release.tdnet.info/inbs/I_main_00.html");
+  assert.equal(requests[0].query.provider, "yanoshin_tdnet");
+  assert.equal(requests[0].query.externalUrl, "https://webapi.yanoshin.jp/webapi/tdnet/list/7203.html");
+});
+
+test("createStockAcquisitionRequests supports three digit alpha listed codes", () => {
+  const requests = createStockAcquisitionRequests({
+    subjectCode: "186A",
+    subjectName: "サンプル新興株"
+  });
+
+  assert.equal(requests[0].status, "ready");
+  assert.equal(requests[0].query.tickerCode, "186A");
+  assert.equal(requests[0].query.externalUrl, "https://webapi.yanoshin.jp/webapi/tdnet/list/186A.html");
+});
+
+test("createStockAcquisitionRequests keeps TDnet visible when a non-url sourceKind is selected", () => {
+  const requests = createStockAcquisitionRequests({
+    subjectCode: "186A",
+    subjectName: "サンプル新興株",
+    sourceKind: "company_ir"
+  });
+
+  assert.deepEqual(
+    requests.map((request) => request.sourceKind),
+    ["official_disclosure", "company_ir", "edinet", "news"]
+  );
 });
 
 test("createStockAcquisitionRequests narrows requests by url source", () => {

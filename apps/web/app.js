@@ -46,6 +46,7 @@ function createDefaultState() {
     selectedActions: [],
     selectedCheckpointIds: [],
     acquisitionStatus: "",
+    acquisitionResults: [],
     finalReaction: ""
   };
 }
@@ -313,7 +314,7 @@ function createDefaultState() {
     if (request.status === "needs_target") {
       return "対象なし";
     }
-    return isUrlAcquisitionRequest(request) ? "取得" : "開く";
+    return isUrlAcquisitionRequest(request) || request.query?.provider === "yanoshin_tdnet" ? "取得" : "開く";
   }
 
   async function runAcquisitionRequest(request) {
@@ -336,9 +337,10 @@ function createDefaultState() {
       ...result.inputPatch
     };
     state.acquisitionStatus = result.status;
+    state.acquisitionResults = result.acquiredItems ?? [];
     saveState();
     await refreshDataFromInput();
-    switchView("home");
+    switchView(result.acquiredItems?.length > 0 ? "input" : "home");
   }
 
   function saveCurrentInputToShelf(input) {
@@ -377,6 +379,35 @@ function createDefaultState() {
     saveState();
     await refreshDataFromInput();
     switchView("home");
+  }
+
+  async function applyAcquisitionResult(index, { save = false } = {}) {
+    const item = state.acquisitionResults[index];
+    if (!item) {
+      return;
+    }
+
+    state.input = {
+      ...state.input,
+      subjectName: state.input.subjectName || item.companyName || "",
+      subjectCode: state.input.subjectCode || item.tickerCode || "",
+      sourceType: item.sourceType || "official",
+      sourceKind: item.sourceKind || "official_disclosure",
+      title: item.title || "",
+      bodyExcerpt: item.bodyExcerpt || "",
+      url: item.url || "",
+      tags: (item.tags ?? []).join(","),
+      eventType: item.eventType || "",
+      sourceStatus: item.sourceStatus || "available"
+    };
+
+    if (save) {
+      saveCurrentInputToShelf(state.input);
+    }
+
+    saveState();
+    await refreshDataFromInput();
+    switchView(save ? "home" : "input");
   }
 
   function renderInput() {
@@ -456,7 +487,7 @@ function createDefaultState() {
             <input name="eventType" value="${inputValue("eventType")}" autocomplete="off">
           </label>
           <div class="action-row">
-            <button class="tool-button active" type="submit" name="intent" value="apply">反映</button>
+            <button class="tool-button active" type="submit" name="intent" value="apply">反映/候補更新</button>
             <button class="tool-button" type="submit" name="intent" value="save">保存</button>
             <button class="tool-button" type="submit" name="intent" value="save-home">保存して概要へ</button>
             <button class="tool-button" type="button" data-clear-input="true">クリア</button>
@@ -467,6 +498,8 @@ function createDefaultState() {
           ${renderMatches()}
           <h2>取得候補</h2>
           ${renderAcquisitionRequests()}
+          <h2>取得結果</h2>
+          ${renderAcquisitionResults()}
         </aside>
       </div>
     `;
@@ -515,6 +548,37 @@ function createDefaultState() {
                 ${keywords.length > 0 ? `<p class="muted">${escapeHtml(keywords.join(", "))}</p>` : ""}
                 <div class="action-row">
                   <button class="tool-button" type="button" data-acquire="${escapeHtml(request.id)}"${request.status === "needs_target" ? " disabled" : ""}>${escapeHtml(acquisitionButtonLabel(request))}</button>
+                </div>
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  function renderAcquisitionResults() {
+    const results = state.acquisitionResults ?? [];
+    if (results.length === 0) {
+      return `<p class="subtitle">まだ取得結果がありません。</p>`;
+    }
+
+    return `
+      <div class="acquisition-list">
+        ${results
+          .map((item, index) => {
+            return `
+              <article class="acquisition-item">
+                <div>
+                  <span class="tag">${escapeHtml(item.sourceKind ?? "source")}</span>
+                  <span class="tag">${escapeHtml(item.publishedAt ? new Date(item.publishedAt).toLocaleDateString("ja-JP") : "日付なし")}</span>
+                </div>
+                <h3>${escapeHtml(item.title)}</h3>
+                <p>${escapeHtml(item.bodyExcerpt || "本文メモなし")}</p>
+                <p class="muted">${escapeHtml([item.companyName, item.url ? "URLあり" : "URLなし", item.eventType].filter(Boolean).join(" / "))}</p>
+                <div class="action-row">
+                  <button class="tool-button" type="button" data-acquired-index="${index}">入力へ反映</button>
+                  <button class="tool-button active" type="button" data-acquired-save="${index}">保存</button>
                 </div>
               </article>
             `;
@@ -815,6 +879,18 @@ function createDefaultState() {
     if (acquire) {
       const request = (data.acquisitionRequests ?? []).find((item) => item.id === acquire.dataset.acquire);
       await runAcquisitionRequest(request);
+      return;
+    }
+
+    const acquiredIndex = event.target.closest("[data-acquired-index]");
+    if (acquiredIndex) {
+      await applyAcquisitionResult(Number(acquiredIndex.dataset.acquiredIndex));
+      return;
+    }
+
+    const acquiredSave = event.target.closest("[data-acquired-save]");
+    if (acquiredSave) {
+      await applyAcquisitionResult(Number(acquiredSave.dataset.acquiredSave), { save: true });
       return;
     }
 

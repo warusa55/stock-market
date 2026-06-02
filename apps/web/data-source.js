@@ -77,6 +77,21 @@ async function defaultFetchUrlContent(url) {
   return response.json();
 }
 
+async function defaultFetchStockDisclosures(request) {
+  if (!globalThis.fetch || !request?.query?.tickerCode) {
+    return null;
+  }
+
+  const response = await fetch(
+    `/api/stock/tdnet?ticker=${encodeURIComponent(request.query.tickerCode)}&limit=10`
+  );
+  if (!response.ok) {
+    return null;
+  }
+
+  return response.json();
+}
+
 async function enrichInputFromUrlContent(input, fetchUrlContent) {
   if (!shouldFetchUrlContent(input)) {
     return input;
@@ -110,6 +125,10 @@ async function enrichInputFromUrlContent(input, fetchUrlContent) {
 
 function isUrlContentRequest(request) {
   return Boolean(request?.id?.includes("-url-") && request?.query?.url);
+}
+
+function isTdnetRequest(request) {
+  return request?.query?.provider === "yanoshin_tdnet" && request?.query?.tickerCode;
 }
 
 function mergeTags(...groups) {
@@ -385,13 +404,24 @@ export async function executeAcquisitionRequest(options = {}) {
   const request = options.request;
   const currentInput = options.input ?? {};
   const fetcher = options.fetchUrlContent ?? defaultFetchUrlContent;
+  const stockDisclosureFetcher = options.fetchStockDisclosures ?? defaultFetchStockDisclosures;
   let content = null;
+  let acquiredItems = [];
   let status = "selected";
 
   if (isUrlContentRequest(request)) {
     try {
       content = await fetcher(request.query.url);
       status = content ? "completed" : "failed";
+    } catch {
+      status = "failed";
+    }
+  } else if (isTdnetRequest(request)) {
+    try {
+      const result = await stockDisclosureFetcher(request);
+      acquiredItems = result?.items ?? [];
+      content = acquiredItems[0] ?? null;
+      status = content ? "completed" : "missing";
     } catch {
       status = "failed";
     }
@@ -404,6 +434,7 @@ export async function executeAcquisitionRequest(options = {}) {
   return {
     status,
     inputPatch,
+    acquiredItems,
     externalUrl: isUrlContentRequest(request) ? "" : request?.query?.externalUrl ?? ""
   };
 }

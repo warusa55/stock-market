@@ -2,6 +2,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { extractUrlContentFromHtml } from "../src/core/url-content.js";
+import { normalizeTdnetResponse } from "../src/plugins/stock/tdnet-acquisition.js";
 
 const DEFAULT_PORT = 6173;
 const MAX_PORT_ATTEMPTS = 20;
@@ -110,6 +111,47 @@ async function handleUrlContentRequest(url, response) {
   }
 }
 
+function normalizeTickerCode(value) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+async function handleStockTdnetRequest(url, response) {
+  const ticker = normalizeTickerCode(url.searchParams.get("ticker"));
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 10), 1), 30);
+
+  if (!/^(?:\d{4}|\d{3}[A-Z])$/.test(ticker)) {
+    sendJson(response, 400, { error: "invalid_ticker" });
+    return;
+  }
+
+  const targetUrl = new URL(`https://webapi.yanoshin.jp/webapi/tdnet/list/${encodeURIComponent(ticker)}.json`);
+  targetUrl.searchParams.set("limit", String(limit));
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const upstream = await fetch(targetUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "ContextPlatformDevServer/0.1"
+      }
+    });
+
+    if (!upstream.ok) {
+      sendJson(response, upstream.status, { error: "tdnet_fetch_failed", status: upstream.status });
+      return;
+    }
+
+    const payload = await upstream.json();
+    sendJson(response, 200, normalizeTdnetResponse(payload, { tickerCode: ticker }));
+  } catch {
+    sendJson(response, 502, { error: "tdnet_fetch_failed" });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function createStaticServer() {
   return createServer((request, response) => {
     if (!request.url || request.method !== "GET") {
@@ -120,6 +162,10 @@ function createStaticServer() {
     const url = new URL(request.url, "http://localhost");
     if (url.pathname === "/api/url-content") {
       handleUrlContentRequest(url, response);
+      return;
+    }
+    if (url.pathname === "/api/stock/tdnet") {
+      handleStockTdnetRequest(url, response);
       return;
     }
 

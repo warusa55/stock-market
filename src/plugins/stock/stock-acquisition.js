@@ -107,6 +107,9 @@ function createExternalUrl(sourceKind, { tickerCode, subjectName }) {
     return "";
   }
 
+  if (sourceKind === "official_disclosure" && tickerCode) {
+    return `https://webapi.yanoshin.jp/webapi/tdnet/list/${encodeURIComponent(tickerCode)}.html`;
+  }
   if (sourceKind === "company_ir") {
     return buildSearchUrl(baseUrl, [tickerCode, subjectName, "IR"]);
   }
@@ -119,7 +122,7 @@ function createExternalUrl(sourceKind, { tickerCode, subjectName }) {
 
 export function extractTickerCode(value) {
   const text = String(value ?? "");
-  const match = text.match(/(?:^|[^\dA-Za-z])(\d{4}[A-Za-z]?)(?=$|[^\dA-Za-z])/);
+  const match = text.match(/(?:^|[^\dA-Za-z])(\d{4}|\d{3}[A-Za-z])(?=$|[^\dA-Za-z])/);
   return match?.[1]?.toUpperCase() ?? "";
 }
 
@@ -185,6 +188,7 @@ function createRequest({ sourceKind, tickerCode, subjectName, url }) {
       tickerCode,
       subjectName,
       url,
+      provider: source.id === "official_disclosure" ? "yanoshin_tdnet" : "",
       externalUrl: createExternalUrl(source.id, { tickerCode, subjectName }),
       keywords: definition.keywords
     }
@@ -220,10 +224,11 @@ export function createStockAcquisitionRequests(input = {}) {
     input.subjectCode?.trim() ||
     input.tickerCode?.trim() ||
     extractTickerCode([input.subjectName, input.title, input.bodyExcerpt, input.tags].join(" "));
-  const inferredSourceKind = input.sourceKind || inferStockSourceKindFromUrl(input.url);
+  const urlSourceKind = inferStockSourceKindFromUrl(input.url);
+  const inferredSourceKind = urlSourceKind || input.sourceKind;
   const sourceIds =
-    inferredSourceKind && inferredSourceKind !== "memo"
-      ? [inferredSourceKind]
+    urlSourceKind && urlSourceKind !== "memo"
+      ? [urlSourceKind]
       : ["official_disclosure", "company_ir", "edinet", "news"];
   const urlRequest = createUrlRequest({
     tickerCode,
@@ -261,6 +266,10 @@ export function createStockAcquisitionInputPatch(request, { content, currentInpu
   if (content) {
     patch.title = currentInput.title || content.title || "";
     patch.bodyExcerpt = currentInput.bodyExcerpt || content.bodyExcerpt || "";
+    patch.url = currentInput.url || content.url || patch.url;
+    patch.eventType = currentInput.eventType || content.eventType || "";
+    patch.tags = mergeTags(patch.tags, content.tags);
+    patch.sourceStatus = content.sourceStatus || "available";
     patch.urlContent = {
       ...content,
       status: "ok"

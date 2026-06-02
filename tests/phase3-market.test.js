@@ -185,3 +185,44 @@ test("market web data source executes URL acquisition into input patch", async (
   assert.equal(result.inputPatch.sourceKind, "official_disclosure");
   assert.equal(result.inputPatch.title, "自己株式の取得状況に関するお知らせ");
 });
+
+test("market web data source executes TDnet acquisition into input patch", async () => {
+  const initialData = await loadContextData({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "7203",
+      subjectName: "サンプル電機"
+    }
+  });
+  const request = initialData.acquisitionRequests.find((item) => item.query.provider === "yanoshin_tdnet");
+  const result = await executeAcquisitionRequest({
+    search: "?domain=stock",
+    input: {
+      subjectCode: "7203",
+      subjectName: "サンプル電機"
+    },
+    request,
+    fetchStockDisclosures: async () => ({
+      items: [
+        {
+          title: "自己株式の取得状況に関するお知らせ",
+          bodyExcerpt: "TDnetから取得した適時開示。",
+          url: "https://example.test/tdnet.pdf",
+          sourceType: "official",
+          sourceKind: "official_disclosure",
+          tickerCode: "7203",
+          companyName: "サンプル電機",
+          tags: ["tdnet", "ticker:7203"],
+          eventType: "self_share_buyback_status",
+          sourceStatus: "available"
+        }
+      ]
+    })
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.acquiredItems.length, 1);
+  assert.equal(result.inputPatch.title, "自己株式の取得状況に関するお知らせ");
+  assert.equal(result.inputPatch.url, "https://example.test/tdnet.pdf");
+  assert.equal(result.inputPatch.eventType, "self_share_buyback_status");
+});
