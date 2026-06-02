@@ -364,6 +364,64 @@ h3 {
   margin-bottom: 0;
 }
 
+.shelf-list,
+.saved-item-list {
+  display: grid;
+  gap: 10px;
+}
+
+.shelf-subject {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-height: 118px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: var(--ink);
+  text-align: left;
+}
+
+.shelf-subject:hover,
+.shelf-subject.active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.shelf-subject strong,
+.shelf-subject span,
+.shelf-subject small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-item {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.saved-item.active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.saved-item h3,
+.saved-item p {
+  margin-bottom: 0;
+}
+
+.saved-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .tool-button {
   min-height: 38px;
   padding: 8px 12px;

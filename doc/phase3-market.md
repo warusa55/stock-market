@@ -113,6 +113,32 @@ const stock = registry.require("stock");
 const fund = registry.require("fund");
 ```
 
+## Market Shelf v0.2
+
+Market Shelfは、DB導入前にlocalStorageで複数銘柄・複数材料を扱うUI検証レイヤー。
+
+今できること:
+
+```txt
+入力内容をマイ棚へ保存する
+同じ銘柄コードの材料を同じ棚へ積む
+ホームの概要でマイ棚と保存済み材料を見る
+銘柄を選ぶと最新材料と最近の流れを切り替える
+保存済み材料を選ぶと既存のOneCard / Dictionary / EventMapへ流す
+今日の1枚Floatingを選択中の材料に追従させる
+```
+
+まだやらないこと:
+
+```txt
+MySQL永続化
+ユーザー別履歴
+TDnet / EDINET / ニュースAPI本接続
+株価取得
+保有数量、平均取得単価、評価損益
+AI要約
+```
+
 ## 守ること
 
 Phase 3でも、以下はcoreへ入れない。

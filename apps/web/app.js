@@ -1,5 +1,17 @@
 import { executeAcquisitionRequest, loadContextData } from "./data-source.js";
 import {
+  createEmptyMarketShelf,
+  createTimelineItemsFromShelf,
+  getSelectedShelfItem,
+  getSelectedShelfSubject,
+  listItemsForSubject,
+  normalizeMarketShelf,
+  restoreInputFromShelf,
+  saveInputToMarketShelf,
+  selectShelfItem,
+  selectShelfSubject
+} from "./market-shelf.js";
+import {
   createTodayCard,
   renderTodayCardFloating,
   resolveTodayCardState,
@@ -21,6 +33,23 @@ const defaultInput = {
   eventType: ""
 };
 
+function isInputEmpty(input) {
+  return Object.values(input ?? {}).every((value) => String(value ?? "").trim() === "");
+}
+
+function createDefaultState() {
+  return {
+    input: { ...defaultInput },
+    marketShelf: createEmptyMarketShelf(),
+    openedDictionaryIds: [],
+    openedEventMapIds: [],
+    selectedActions: [],
+    selectedCheckpointIds: [],
+    acquisitionStatus: "",
+    finalReaction: ""
+  };
+}
+
 (async function () {
   let data = await loadContextData();
   let storageKey = `context-platform-${data.registryId}-${data.domainId}-state`;
@@ -35,31 +64,36 @@ const defaultInput = {
   };
 
   let state = loadState();
+  if (!isInputEmpty(state.input)) {
+    data = await loadContextData({
+      input: state.input
+    });
+  }
   let todayCard = createTodayCard(data.card, { subject: data.subject });
   let todayCardState = resolveTodayCardState(todayCard);
 
   function loadState() {
     try {
-      return {
-        input: { ...defaultInput },
-        openedDictionaryIds: [],
-        openedEventMapIds: [],
-        selectedActions: [],
-        selectedCheckpointIds: [],
-        acquisitionStatus: "",
-        finalReaction: "",
-        ...(JSON.parse(localStorage.getItem(storageKey)) ?? {})
+      const parsed = JSON.parse(localStorage.getItem(storageKey)) ?? {};
+      const next = {
+        ...createDefaultState(),
+        ...parsed,
+        input: {
+          ...defaultInput,
+          ...(parsed.input ?? {})
+        },
+        marketShelf: normalizeMarketShelf(parsed.marketShelf)
       };
+      const selectedSubject = getSelectedShelfSubject(next.marketShelf);
+      const selectedItem = getSelectedShelfItem(next.marketShelf);
+
+      if (selectedSubject && selectedItem && isInputEmpty(next.input)) {
+        next.input = restoreInputFromShelf(selectedSubject, selectedItem);
+      }
+
+      return next;
     } catch {
-      return {
-        input: { ...defaultInput },
-        openedDictionaryIds: [],
-        openedEventMapIds: [],
-        selectedActions: [],
-        selectedCheckpointIds: [],
-        acquisitionStatus: "",
-        finalReaction: ""
-      };
+      return createDefaultState();
     }
   }
 
@@ -106,8 +140,65 @@ const defaultInput = {
     document.getElementById("view-title").textContent = viewTitles[viewId];
   }
 
+  function selectedShelfSubject() {
+    return getSelectedShelfSubject(state.marketShelf);
+  }
+
+  function selectedShelfItem() {
+    return getSelectedShelfItem(state.marketShelf);
+  }
+
+  function selectedShelfItems() {
+    const subject = selectedShelfSubject();
+    return subject ? listItemsForSubject(state.marketShelf, subject.id) : [];
+  }
+
+  function overviewSubject() {
+    return selectedShelfSubject() ?? {
+      id: data.subject.id,
+      domainId: data.domainId,
+      subjectType: data.subject.type,
+      code: currentTickerCode(),
+      name: data.subject.name,
+      memo: data.subject.description ?? "",
+      tags: data.subject.tags ?? []
+    };
+  }
+
+  function overviewItem() {
+    const shelfItem = selectedShelfItem();
+    if (shelfItem) {
+      return shelfItem;
+    }
+
+    return {
+      id: data.item?.id ?? "current-item",
+      subjectId: data.subject.id,
+      domainId: data.domainId,
+      sourceType: data.item?.sourceType ?? "manual",
+      sourceKind: data.item?.raw?.sourceKind ?? "",
+      title: data.item?.title ?? "材料なし",
+      bodyExcerpt: data.item?.bodyExcerpt ?? "",
+      url: data.item?.url ?? "",
+      tags: data.item?.tags ?? [],
+      eventType: data.item?.raw?.eventType ?? data.item?.raw?.inferredEventType ?? ""
+    };
+  }
+
+  function overviewTimelineItems() {
+    const subject = selectedShelfSubject();
+    const items = selectedShelfItems();
+    if (subject && items.length > 0) {
+      return createTimelineItemsFromShelf(subject, items);
+    }
+
+    return data.timeline;
+  }
+
   function currentTickerCode() {
+    const subject = selectedShelfSubject();
     return (
+      subject?.code ??
       data.item?.raw?.tickerCode ??
       state.input?.subjectCode ??
       data.subject?.tags?.find((tag) => String(tag).startsWith("ticker:"))?.slice("ticker:".length) ??
@@ -116,7 +207,8 @@ const defaultInput = {
   }
 
   function currentSourceLabel() {
-    return data.item?.raw?.sourceLabel ?? data.item?.sourceType ?? state.input?.sourceKind ?? "未指定";
+    const item = selectedShelfItem();
+    return item?.sourceKind || data.item?.raw?.sourceLabel || data.item?.sourceType || state.input?.sourceKind || "未指定";
   }
 
   function renderTimelinePreview(items = data.timeline.slice(0, 3)) {
@@ -142,12 +234,15 @@ const defaultInput = {
   }
 
   function renderHome() {
+    const subject = overviewSubject();
+    const item = overviewItem();
+    const timelineItems = overviewTimelineItems();
     document.getElementById("home").innerHTML = `
       <div class="layout-grid">
         <article class="card holding-card">
           <div class="card-title">
             <div>
-              <h2>${escapeHtml(data.subject.name)}</h2>
+              <h2>${escapeHtml(subject.name)}</h2>
               <p class="subtitle">保有・監視銘柄の入口</p>
             </div>
             <span class="status-pill">${escapeHtml(data.domainName)}</span>
@@ -168,9 +263,9 @@ const defaultInput = {
           </div>
           <h3>最新材料</h3>
           <article class="compact-item featured">
-            <span class="tag">${escapeHtml(data.item?.sourceType ?? "manual")}</span>
-            <h3>${escapeHtml(data.item?.title ?? "材料なし")}</h3>
-            <p>${escapeHtml(data.item?.bodyExcerpt || "入力または取得から、ここに最新材料を表示します。")}</p>
+            <span class="tag">${escapeHtml(item.sourceType ?? "manual")}</span>
+            <h3>${escapeHtml(item.title ?? "材料なし")}</h3>
+            <p>${escapeHtml(item.bodyExcerpt || "入力または取得から、ここに最新材料を表示します。")}</p>
           </article>
           <div class="action-row">
             <button class="tool-button active" data-view="input">銘柄/材料を入力</button>
@@ -179,15 +274,29 @@ const defaultInput = {
           </div>
         </article>
         <aside class="panel">
-          <h2>検出語句</h2>
-          ${renderMatches()}
-          <h2>取得候補</h2>
-          ${renderAcquisitionRequests()}
+          <h2>マイ棚</h2>
+          ${renderMarketShelf()}
         </aside>
       </div>
       <section class="panel overview-section">
         <h2>最近の流れ</h2>
-        ${renderTimelinePreview()}
+        ${renderTimelinePreview(timelineItems)}
+      </section>
+      <section class="panel overview-section">
+        <h2>保存済み材料</h2>
+        ${renderSavedShelfItems()}
+      </section>
+      <section class="panel overview-section">
+        <div class="layout-grid">
+          <div>
+            <h2>検出語句</h2>
+            ${renderMatches()}
+          </div>
+          <div>
+            <h2>取得候補</h2>
+            ${renderAcquisitionRequests()}
+          </div>
+        </div>
       </section>
     `;
   }
@@ -227,6 +336,44 @@ const defaultInput = {
       ...result.inputPatch
     };
     state.acquisitionStatus = result.status;
+    saveState();
+    await refreshDataFromInput();
+    switchView("home");
+  }
+
+  function saveCurrentInputToShelf(input) {
+    const result = saveInputToMarketShelf(state.marketShelf, input, {
+      domainId: data.domainId
+    });
+    state.marketShelf = result.shelf;
+    state.input = restoreInputFromShelf(result.subject, result.item);
+    saveState();
+    return result;
+  }
+
+  async function selectSubjectFromShelf(subjectId) {
+    state.marketShelf = selectShelfSubject(state.marketShelf, subjectId);
+    const subject = selectedShelfSubject();
+    const item = selectedShelfItem();
+
+    if (subject && item) {
+      state.input = restoreInputFromShelf(subject, item);
+    }
+
+    saveState();
+    await refreshDataFromInput();
+    switchView("home");
+  }
+
+  async function selectItemFromShelf(itemId) {
+    state.marketShelf = selectShelfItem(state.marketShelf, itemId);
+    const subject = selectedShelfSubject();
+    const item = selectedShelfItem();
+
+    if (subject && item) {
+      state.input = restoreInputFromShelf(subject, item);
+    }
+
     saveState();
     await refreshDataFromInput();
     switchView("home");
@@ -309,7 +456,9 @@ const defaultInput = {
             <input name="eventType" value="${inputValue("eventType")}" autocomplete="off">
           </label>
           <div class="action-row">
-            <button class="tool-button active" type="submit">反映</button>
+            <button class="tool-button active" type="submit" name="intent" value="apply">反映</button>
+            <button class="tool-button" type="submit" name="intent" value="save">保存</button>
+            <button class="tool-button" type="submit" name="intent" value="save-home">保存して概要へ</button>
             <button class="tool-button" type="button" data-clear-input="true">クリア</button>
           </div>
         </form>
@@ -366,6 +515,83 @@ const defaultInput = {
                 ${keywords.length > 0 ? `<p class="muted">${escapeHtml(keywords.join(", "))}</p>` : ""}
                 <div class="action-row">
                   <button class="tool-button" type="button" data-acquire="${escapeHtml(request.id)}"${request.status === "needs_target" ? " disabled" : ""}>${escapeHtml(acquisitionButtonLabel(request))}</button>
+                </div>
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  function renderMarketShelf() {
+    const shelf = normalizeMarketShelf(state.marketShelf);
+    if (shelf.subjects.length === 0) {
+      return `
+        <p class="subtitle">まだマイ棚に銘柄がありません。</p>
+        <p class="subtitle">入力画面から銘柄と材料を保存してください。</p>
+      `;
+    }
+
+    return `
+      <div class="shelf-list">
+        ${shelf.subjects
+          .map((subject) => {
+            const items = listItemsForSubject(shelf, subject.id);
+            const latestItem = items[0];
+            const active = shelf.selectedSubjectId === subject.id ? " active" : "";
+            const signal = latestItem?.eventType || latestItem?.tags?.slice(0, 2).join(", ") || "材料未分類";
+
+            return `
+              <button class="shelf-subject${active}" type="button" data-shelf-subject="${escapeHtml(subject.id)}">
+                <span class="tag">${escapeHtml(subject.code || "no-code")}</span>
+                <strong>${escapeHtml(subject.name)}</strong>
+                <span>${escapeHtml(`材料 ${items.length}件`)}</span>
+                <small>${escapeHtml(latestItem?.title ?? "保存済み材料なし")}</small>
+                <small class="muted">${escapeHtml(signal)}</small>
+              </button>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  function renderSavedShelfItems() {
+    const subject = selectedShelfSubject();
+    const items = selectedShelfItems();
+    if (!subject) {
+      return `<p class="subtitle">マイ棚から銘柄を選ぶと、保存済み材料がここに出ます。</p>`;
+    }
+    if (items.length === 0) {
+      return `<p class="subtitle">この銘柄にはまだ材料がありません。</p>`;
+    }
+
+    return `
+      <div class="saved-item-list">
+        ${items
+          .map((item) => {
+            const active = state.marketShelf.selectedItemId === item.id ? " active" : "";
+            const meta = [
+              item.url ? "URLあり" : "URLなし",
+              item.sourceKind || item.sourceType,
+              item.eventType,
+              ...(item.tags ?? []).slice(0, 3)
+            ]
+              .filter(Boolean)
+              .join(" / ");
+
+            return `
+              <article class="saved-item${active}">
+                <div class="saved-item-head">
+                  <span class="tag">${new Date(item.updatedAt).toLocaleDateString("ja-JP")}</span>
+                  <span class="tag">${escapeHtml(item.sourceType)}</span>
+                </div>
+                <h3>${escapeHtml(item.title)}</h3>
+                <p>${escapeHtml(item.bodyExcerpt || "本文メモなし")}</p>
+                <p class="muted">${escapeHtml(meta)}</p>
+                <div class="action-row">
+                  <button class="tool-button${active}" type="button" data-shelf-item="${escapeHtml(item.id)}">この材料で見る</button>
                 </div>
               </article>
             `;
@@ -543,6 +769,18 @@ const defaultInput = {
       return;
     }
 
+    const shelfSubject = event.target.closest("[data-shelf-subject]");
+    if (shelfSubject) {
+      await selectSubjectFromShelf(shelfSubject.dataset.shelfSubject);
+      return;
+    }
+
+    const shelfItem = event.target.closest("[data-shelf-item]");
+    if (shelfItem) {
+      await selectItemFromShelf(shelfItem.dataset.shelfItem);
+      return;
+    }
+
     const todayCardExpand = event.target.closest("[data-today-card-expand]");
     if (todayCardExpand) {
       todayCardState = updateTodayCardStateStatus(todayCardState, "opened");
@@ -630,17 +868,24 @@ const defaultInput = {
     }
   });
 
-  document.addEventListener("submit", (event) => {
+  document.addEventListener("submit", async (event) => {
     if (event.target.id !== "context-input-form") {
       return;
     }
 
     event.preventDefault();
     const formData = new FormData(event.target);
+    formData.delete("intent");
+    const intent = event.submitter?.value ?? "apply";
     state.input = Object.fromEntries(formData.entries());
+
+    if (intent === "save" || intent === "save-home") {
+      saveCurrentInputToShelf(state.input);
+    }
+
     saveState();
-    refreshDataFromInput();
-    switchView("home");
+    await refreshDataFromInput();
+    switchView(intent === "save" ? "input" : "home");
   });
 
   renderAll();
