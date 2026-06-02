@@ -1,6 +1,8 @@
-(function () {
-  const data = window.CONTEXT_DEMO;
-  const storageKey = "context-platform-demo-state";
+import { loadContextData } from "./data-source.js";
+
+(async function () {
+  const data = await loadContextData();
+  const storageKey = `context-platform-${data.registryId}-${data.domainId}-state`;
   const viewTitles = {
     home: "今日の1枚",
     dictionary: "用語図鑑",
@@ -77,7 +79,7 @@
               <h2>${escapeHtml(card.title)}</h2>
               <p class="subtitle">${escapeHtml(card.subtitle)}</p>
             </div>
-            <span class="status-pill">easy</span>
+            <span class="status-pill">${escapeHtml(card.difficulty ?? "normal")}</span>
           </div>
           <p>${escapeHtml(card.shortExplanation)}</p>
           <h3>見るポイント</h3>
@@ -85,7 +87,7 @@
           <h3>今日の理解</h3>
           <p>${escapeHtml(card.todayTakeaway)}</p>
           <div class="action-row">
-            ${card.nextActions
+            ${(card.nextActions ?? [])
               .map((action) => {
                 const active = state.selectedActions.includes(action.id) ? " active" : "";
                 return `<button class="tool-button${active}" data-action="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`;
@@ -184,7 +186,7 @@
           <h2>${escapeHtml(checkpoint.title)}</h2>
           <p>${escapeHtml(checkpoint.prompt)}</p>
           <div class="checkpoint-options">
-            ${checkpoint.options
+            ${(checkpoint.options ?? [])
               .map((option) => {
                 const active = state.selectedCheckpointIds.includes(option.id) ? " active" : "";
                 return `
@@ -268,7 +270,10 @@
 
     const action = event.target.closest("[data-action]");
     if (action) {
-      const actionData = data.card.nextActions.find((item) => item.id === action.dataset.action);
+      const actionData = (data.card.nextActions ?? []).find((item) => item.id === action.dataset.action);
+      if (!actionData) {
+        return;
+      }
       addUnique("selectedActions", actionData.id);
       if (actionData.type === "open_dictionary") {
         addUnique("openedDictionaryIds", actionData.targetId);
